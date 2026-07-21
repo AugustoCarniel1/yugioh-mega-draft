@@ -1682,6 +1682,36 @@ def render_shop_component(player_id: int, player_gold: float, shop: dict) -> Non
       .shop-img { width:100%; aspect-ratio:421/614; object-fit:cover; border-radius:5px; display:block; }
       .shop-name { color:#f8fafc; font-size:11px; font-weight:750; line-height:1.15; min-height:26px; margin-top:6px; }
       .shop-code { color:#93c5fd; font-size:10px; margin-top:3px; }
+      .shop-hover-preview {
+        background: rgba(2, 6, 23, 0.92);
+        border: 1px solid rgba(147, 197, 253, 0.8);
+        border-radius: 8px;
+        box-shadow: 0 18px 42px rgba(0,0,0,0.45);
+        display: none;
+        left: 50%;
+        max-height: calc(100vh - 28px);
+        padding: 8px;
+        pointer-events: none;
+        position: fixed;
+        top: 14px;
+        transform: translateX(-50%);
+        width: min(520px, 38vw);
+        z-index: 9999;
+      }
+      .shop-hover-preview img {
+        border-radius: 5px;
+        display: block;
+        max-height: calc(100vh - 72px);
+        object-fit: contain;
+        width: 100%;
+      }
+      .shop-hover-preview-title {
+        color: #e5e7eb;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1.2;
+        margin-top: 6px;
+      }
       .buy-button { width:100%; height:28px; margin-top:6px; border:0; border-radius:5px; background:#b45309; color:white; font-weight:850; cursor:pointer; }
       .buy-button:disabled { opacity:.45; cursor:not-allowed; }
       .buy-button.recent-buy { animation:buyPulse .7s ease; background:#059669; }
@@ -1732,13 +1762,28 @@ def render_shop_component(player_id: int, player_gold: float, shop: dict) -> Non
         const groups = {};
         rarityOrder.forEach(r=>groups[r]=[]);
         data.cards.forEach(card => (groups[groups[card.rarity] ? card.rarity : "Demais raridades"]).push(card));
-        root.innerHTML = `<section class="shop-shell"><div class="toast"></div><div class="shop-top"><strong>Loja</strong><span class="shop-gold">${fmtGold(data.playerGold)}g</span></div>${
+        root.innerHTML = `<section class="shop-shell"><div class="shop-hover-preview"><img alt=""><div class="shop-hover-preview-title"></div></div><div class="toast"></div><div class="shop-top"><strong>Loja</strong><span class="shop-gold">${fmtGold(data.playerGold)}g</span></div>${
           rarityOrder.map(r=>{
             const cards=(groups[r]||[]).sort((a,b)=>typeSort(a)-typeSort(b)||a.name.localeCompare(b.name));
             if(!cards.length) return "";
             return `<div class="rarity-title">${r} - ${cards[0].price}g</div><div class="shop-grid">${cards.map(cardHtml).join("")}</div>`;
           }).join("")
         }</section>`;
+        document.querySelectorAll(".shop-card").forEach(cardEl=>{
+          cardEl.addEventListener("mouseenter", ()=>{
+            const image = cardEl.querySelector(".shop-img");
+            const preview = document.querySelector(".shop-hover-preview");
+            if(!image || !preview) return;
+            preview.querySelector("img").src = image.src;
+            preview.querySelector("img").alt = image.alt;
+            preview.querySelector(".shop-hover-preview-title").textContent = image.alt;
+            preview.style.display = "block";
+          });
+          cardEl.addEventListener("mouseleave", ()=>{
+            const preview = document.querySelector(".shop-hover-preview");
+            if(preview) preview.style.display = "none";
+          });
+        });
         document.querySelectorAll("[data-card]").forEach(btn=>{
           btn.addEventListener("click", async ()=>{
             const card = data.cards.find(c=>Number(c.card_id)===Number(btn.dataset.card));
