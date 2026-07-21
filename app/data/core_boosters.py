@@ -1,7 +1,7 @@
 CORE_BOOSTERS = [
     {"position": 0, "set_name": "Legend of Blue Eyes White Dragon", "set_code": "LOB", "series": "Serie 1 - 3 compilations", "year": 2002},
     {"position": 1, "set_name": "Metal Raiders", "set_code": "MRD", "series": "Serie 1 - 3 compilations", "year": 2002},
-    {"position": 2, "set_name": "Magic Ruler / Spell Ruler", "set_code": "MRL/SRL", "series": "Serie 1 - 3 compilations", "year": 2002},
+    {"position": 2, "set_name": "Spell Ruler", "set_code": "SRL", "series": "Serie 1 - 3 compilations", "year": 2002},
     {"position": 3, "set_name": "Pharaoh's Servant", "set_code": "PSV", "series": "Serie 1 - 3 compilations", "year": 2002},
     {"position": 4, "set_name": "Labyrinth of Nightmare", "set_code": "LON", "series": "Serie 1 - 3 compilations", "year": 2003},
     {"position": 5, "set_name": "Legacy of Darkness", "set_code": "LOD", "series": "Serie 1 - 3 compilations", "year": 2003},
