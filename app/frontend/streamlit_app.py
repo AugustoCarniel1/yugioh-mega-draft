@@ -1,0 +1,1856 @@
+import json
+from html import escape
+
+import requests
+import streamlit as st
+import streamlit.components.v1 as components
+
+
+API_URL = "http://127.0.0.1:8000"
+
+
+def api_get(path: str):
+    response = requests.get(f"{API_URL}{path}", timeout=30)
+    response.raise_for_status()
+    return response.json()
+
+
+def api_post(path: str, **kwargs):
+    response = requests.post(f"{API_URL}{path}", timeout=60, **kwargs)
+    response.raise_for_status()
+    return response.json()
+
+
+def api_delete(path: str):
+    response = requests.delete(f"{API_URL}{path}", timeout=60)
+    response.raise_for_status()
+    return response.json()
+
+
+def error_message(exc: requests.HTTPError) -> str:
+    try:
+        payload = exc.response.json()
+    except ValueError:
+        return exc.response.text
+    return payload.get("detail") or exc.response.text
+
+
+def remember_player(player_id: int) -> None:
+    st.session_state["active_player_id"] = player_id
+
+
+def format_gold(value: float | int) -> str:
+    value = float(value)
+    return str(int(value)) if value.is_integer() else f"{value:.1f}"
+
+
+def render_gold_metric(player_id: int, initial_gold: float) -> None:
+    payload = {
+        "apiUrl": API_URL,
+        "playerId": player_id,
+        "gold": initial_gold,
+    }
+    html = """
+    <div id="gold-metric-root"></div>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: "Source Sans Pro", sans-serif; }
+      .gold-metric {
+        border-left: 1px solid rgba(49, 51, 63, 0.2);
+        padding-left: 0.1rem;
+      }
+      .gold-label {
+        color: white;
+        font-size: 0.875rem;
+        margin-bottom: 0.25rem;
+      }
+      .gold-value {
+        color: white;
+        font-size: 1.5rem;
+        font-weight: 700;
+        line-height: 1.2;
+      }
+    </style>
+    <script>
+      const data = __PAYLOAD__;
+      const root = document.getElementById("gold-metric-root");
+      let lastGold = Number(data.gold || 0);
+
+      function fmtGold(v) {
+        v = Number(v || 0);
+        return Number.isInteger(v) ? String(v) : v.toFixed(1);
+      }
+
+      function isDirty() {
+        try {
+          return window.parent.localStorage.getItem("ygo_editor_dirty") === "1";
+        } catch (err) {
+          return false;
+        }
+      }
+
+      function render() {
+        root.innerHTML = `
+          <div class="gold-metric">
+            <div class="gold-label">Gold</div>
+            <div class="gold-value">${fmtGold(lastGold)}g</div>
+          </div>
+        `;
+      }
+
+      async function refreshGold() {
+        const response = await fetch(`${data.apiUrl}/players/${data.playerId}`);
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) return;
+        lastGold = Number(payload.gold || 0);
+        render();
+      }
+
+      render();
+      window.setInterval(() => {
+        if (isDirty()) {
+          refreshGold().catch(() => {});
+        }
+      }, 900);
+    </script>
+    """.replace("__PAYLOAD__", json.dumps(payload))
+    components.html(html, height=78, scrolling=False)
+
+
+st.set_page_config(page_title="Yu-Gi-Oh! Mega Draft", layout="wide")
+st.markdown(
+    """
+    <style>
+    div[data-testid="stHorizontalBlock"] {
+        overflow: visible;
+    }
+
+    .card-thumb-wrap {
+        position: relative;
+        z-index: 1;
+        overflow: visible;
+        width: 100%;
+    }
+
+    .card-thumb-wrap:hover {
+        z-index: 80;
+    }
+
+    .card-thumb {
+        display: block;
+        width: 100%;
+        height: auto;
+        border-radius: 4px;
+        image-rendering: auto;
+        transition: box-shadow 120ms ease;
+    }
+
+    .card-thumb:hover {
+        box-shadow: 0 0 0 2px #38bdf8, 0 10px 26px rgba(0, 0, 0, 0.32);
+    }
+
+    .card-thumb-preview {
+        background: rgba(2, 6, 23, 0.94);
+        border: 1px solid rgba(147, 197, 253, 0.85);
+        border-radius: 8px;
+        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.45);
+        display: none;
+        left: 50%;
+        max-height: calc(100vh - 28px);
+        padding: 8px;
+        pointer-events: none;
+        position: fixed;
+        top: 14px;
+        transform: translateX(-50%);
+        width: min(520px, 38vw);
+        z-index: 999999;
+    }
+
+    .card-thumb-preview img {
+        border-radius: 5px;
+        display: block;
+        max-height: calc(100vh - 72px);
+        object-fit: contain;
+        width: 100%;
+    }
+
+    .card-thumb-preview-title {
+        color: #e5e7eb;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1.2;
+        margin-top: 6px;
+    }
+
+    .card-thumb-wrap:hover .card-thumb-preview {
+        display: block;
+    }
+
+    .card-meta {
+        color: #6b7280;
+        font-size: 0.72rem;
+        line-height: 1.15;
+        margin-top: 0.15rem;
+        min-height: 1.7rem;
+    }
+
+    .deck-box {
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        padding: 0.65rem;
+        margin-bottom: 0.65rem;
+        background: #fafafa;
+    }
+
+    .deck-box-title {
+        font-weight: 700;
+        margin-bottom: 0.4rem;
+    }
+
+    .deck-card-line {
+        align-items: center;
+        border-bottom: 1px solid #e5e7eb;
+        display: flex;
+        font-size: 0.82rem;
+        gap: 0.35rem;
+        justify-content: space-between;
+        min-height: 1.55rem;
+        padding: 0.12rem 0;
+    }
+
+    .deck-card-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .deck-section-label {
+        color: #4b5563;
+        font-size: 0.75rem;
+        font-weight: 700;
+        margin-top: 0.45rem;
+        text-transform: uppercase;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+st.title("Yu-Gi-Oh! Mega Draft")
+
+with st.sidebar:
+    st.header("Jogador")
+    players = api_get("/players")
+    player_options = {player["id"]: player for player in players}
+    player_ids = [player["id"] for player in players]
+    select_options = ["new"] + player_ids
+    saved_player_id = st.session_state.get("active_player_id")
+    if saved_player_id not in player_ids and player_ids:
+        saved_player_id = player_ids[0]
+        remember_player(saved_player_id)
+    selected_index = select_options.index(saved_player_id) if saved_player_id in player_ids else 0
+    if st.session_state.get("player_select") not in select_options:
+        st.session_state["player_select"] = saved_player_id if saved_player_id in player_ids else "new"
+
+    def player_label(option: str | int) -> str:
+        if option == "new":
+            return "Criar novo"
+        option_player = player_options[option]
+        return f"{option_player['name']} ({format_gold(option_player['gold'])}g)"
+
+    selected_player_key = st.selectbox(
+        "Perfil ativo",
+        select_options,
+        format_func=player_label,
+        index=selected_index,
+        key="player_select",
+    )
+    active_player = None
+
+    if selected_player_key == "new":
+        st.session_state.pop("active_player_id", None)
+    else:
+        active_player = player_options[selected_player_key]
+        remember_player(active_player["id"])
+
+    if selected_player_key == "new":
+        with st.form("create-player"):
+            name = st.text_input("Nome")
+            submitted = st.form_submit_button("Criar jogador")
+            if submitted and name.strip():
+                try:
+                    active_player = api_post("/players", json={"name": name.strip()})
+                    remember_player(active_player["id"])
+                    st.success("Jogador criado.")
+                    st.rerun()
+                except requests.HTTPError as exc:
+                    st.error(error_message(exc))
+
+    st.divider()
+    if active_player:
+        with st.expander("Perfil"):
+            st.caption("Excluir remove o perfil, inventario e deck deste jogador.")
+            confirm_delete = st.checkbox("Confirmar exclusao", key=f"confirm-delete-{active_player['id']}")
+            if st.button("Excluir perfil", disabled=not confirm_delete, key=f"delete-player-{active_player['id']}"):
+                try:
+                    api_delete(f"/players/{active_player['id']}")
+                    st.session_state.pop("active_player_id", None)
+                    st.success("Perfil excluido.")
+                    st.rerun()
+                except requests.HTTPError as exc:
+                    st.error(error_message(exc))
+
+    st.divider()
+    if st.button("Sincronizar colecoes da API"):
+        try:
+            result = api_post("/collections/sync")
+            st.success(f"{result['synced']} colecoes sincronizadas.")
+        except requests.HTTPError as exc:
+            st.error(error_message(exc))
+
+
+if not active_player:
+    st.info("Crie ou selecione um jogador para comecar.")
+    st.stop()
+
+player = api_get(f"/players/{active_player['id']}")
+collections = api_get("/collections")
+current_collection = next(
+    (item for item in collections if item["position"] == player["current_collection_index"]),
+    None,
+)
+round_label = "Inicial" if player["current_collection_index"] < 0 else player["current_collection_index"] + 1
+collection_label = current_collection["set_name"] if current_collection else "Sem colecao"
+
+try:
+    inventory = api_get(f"/players/{player['id']}/inventory")
+except requests.HTTPError as exc:
+    st.error(f"Erro ao carregar inventario: {error_message(exc)}")
+    st.stop()
+
+top_cols = st.columns([2, 2, 3])
+with top_cols[0]:
+    render_gold_metric(player["id"], player["gold"])
+top_cols[1].metric("Rodada", round_label)
+top_cols[2].metric("Main Collection", collection_label)
+
+actions = st.columns([2, 2, 6])
+if inventory:
+    actions[0].caption("Starter Deck ja importado.")
+else:
+    uploaded_file = actions[0].file_uploader("Importar Starter Deck (.ydk)", type=["ydk"])
+    if uploaded_file and actions[0].button("Importar .ydk"):
+        files = {"file": (uploaded_file.name, uploaded_file.getvalue(), "text/plain")}
+        try:
+            result = api_post(f"/players/{player['id']}/import-ydk", files=files)
+            remember_player(player["id"])
+            st.success(f"{result['imported']} cartas importadas.")
+            st.rerun()
+        except requests.HTTPError as exc:
+            st.error(error_message(exc))
+
+if actions[1].button("Passar Rodada (+10g)"):
+    try:
+        result = api_post(f"/players/{player['id']}/advance-round")
+        remember_player(player["id"])
+        collection_name = result.get("collection_name") or "sem colecao sincronizada"
+        st.success(f"Rodada avancada. Proxima colecao: {collection_name}.")
+        st.rerun()
+    except requests.HTTPError as exc:
+        st.error(error_message(exc))
+
+st.divider()
+
+try:
+    deck = api_get(f"/players/{player['id']}/deck")
+except requests.HTTPError as exc:
+    st.error(f"Erro ao carregar deck: {error_message(exc)}")
+    st.stop()
+
+
+def filtered_cards(cards: list[dict], query: str) -> list[dict]:
+    if not query:
+        return cards
+    needle = query.lower()
+    return [
+        card for card in cards
+        if needle in card["name"].lower()
+        or needle in (card.get("type") or "").lower()
+        or needle in (card.get("archetype") or "").lower()
+    ]
+
+
+def render_card_image(card: dict) -> None:
+    if not card.get("image_url"):
+        return
+    image_url = escape(f"{API_URL}{card['image_url']}")
+    card_name = escape(card["name"])
+    st.markdown(
+        f"""
+        <div class="card-thumb-wrap">
+            <img class="card-thumb" src="{image_url}" alt="{card_name}" loading="lazy">
+            <div class="card-thumb-preview">
+                <img src="{image_url}" alt="{card_name}" loading="lazy">
+                <div class="card-thumb-preview-title">{card_name}</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def restriction_icon(status: str | None) -> str:
+    if status == "banned":
+        return "⊘"
+    if status == "limited":
+        return "1"
+    return ""
+
+
+def render_banlist_thumb(card: dict, status: str | None = None, max_width: int = 84) -> None:
+    if not card.get("image_url"):
+        return
+    image_url = escape(f"{API_URL}{card['image_url']}")
+    card_name = escape(card["name"])
+    icon = restriction_icon(status or card.get("status") or card.get("restriction_status"))
+    badge_html = (
+        f'<div style="position:absolute; left:-4px; top:-4px; width:24px; height:24px; border-radius:50%;'
+        f'background:{"#991b1b" if icon == "⊘" else "#b45309"}; color:white; display:flex;'
+        f'align-items:center; justify-content:center; font-weight:900; font-size:17px;'
+        f'box-shadow:0 0 0 2px #020617;">{icon}</div>'
+        if icon
+        else ""
+    )
+    st.markdown(
+        f"""
+        <div style="max-width: {max_width}px; margin: 0 auto; position: relative;">
+            <img src="{image_url}" alt="{card_name}" loading="lazy"
+                style="width: 100%; border-radius: 4px; display: block;">
+            {badge_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_collection_grid(cards: list[dict], mode: str) -> None:
+    if not cards:
+        st.info("Nenhuma carta encontrada.")
+        return
+
+    cards_per_row = 6 if mode == "editor" else 12
+    for row_start in range(0, len(cards), cards_per_row):
+        cols = st.columns(cards_per_row, gap="small")
+        for col, card in zip(cols, cards[row_start:row_start + cards_per_row]):
+            with col:
+                render_card_image(card)
+                available = card.get("available_quantity", card["quantity"])
+                st.markdown(
+                    f"""
+                    <div class="card-meta">
+                        {available}/{card['quantity']} livre<br>
+                        {card['rarity']}
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                with st.popover(card["name"], use_container_width=True):
+                    st.write(card.get("type") or "")
+                    if card.get("race"):
+                        st.write(f"Raca: {card['race']}")
+                    if card.get("archetype"):
+                        st.write(f"Arquetipo: {card['archetype']}")
+                    st.write(card.get("desc") or "Sem texto.")
+                    if mode == "editor":
+                        add_cols = st.columns(3)
+                        for zone, label, add_col in (
+                            ("main", "Main", add_cols[0]),
+                            ("extra", "Extra", add_cols[1]),
+                            ("side", "Side", add_cols[2]),
+                        ):
+                            if add_col.button(label, key=f"add-{zone}-{card['card_id']}"):
+                                try:
+                                    api_post(
+                                        f"/players/{player['id']}/deck/cards",
+                                        json={"card_id": card["card_id"], "zone": zone},
+                                    )
+                                    remember_player(player["id"])
+                                    st.rerun()
+                                except requests.HTTPError as exc:
+                                    st.error(error_message(exc))
+                    else:
+                        st.caption(f"Venda: {format_gold(card['sell_price'])}g")
+                        if st.button("Vender 1 copia", key=f"sell-{card['inventory_id']}"):
+                            try:
+                                api_post(f"/players/{player['id']}/inventory/{card['inventory_id']}/sell")
+                                remember_player(player["id"])
+                                st.rerun()
+                            except requests.HTTPError as exc:
+                                st.error(error_message(exc))
+
+
+def render_deck_zone(title: str, cards: list[dict], count: int, valid: bool, limit_text: str) -> None:
+    status = "OK" if valid else "Ajustar"
+    st.markdown(
+        f"""
+        <div class="deck-box">
+            <div class="deck-box-title">{title}: {count} cartas ({limit_text}) - {status}</div>
+        """,
+        unsafe_allow_html=True,
+    )
+    grouped = {
+        "Monstros": [card for card in cards if card["category"] == "monster"],
+        "Spells": [card for card in cards if card["category"] == "spell"],
+        "Traps": [card for card in cards if card["category"] == "trap"],
+    }
+    for group_name, group_cards in grouped.items():
+        if not group_cards:
+            continue
+        st.markdown(f'<div class="deck-section-label">{group_name}</div>', unsafe_allow_html=True)
+        for card in group_cards:
+            line_cols = st.columns([7, 1])
+            line_cols[0].markdown(
+                f"""
+                <div class="deck-card-line">
+                    <span class="deck-card-name">{card['quantity']}x {escape(card['name'])}</span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            if line_cols[1].button("-", key=f"remove-{card['deck_id']}"):
+                try:
+                    api_delete(f"/players/{player['id']}/deck/cards/{card['deck_id']}")
+                    remember_player(player["id"])
+                    st.rerun()
+                except requests.HTTPError as exc:
+                    st.error(error_message(exc))
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+def editor_card_payload(card: dict) -> dict:
+    card_type = card.get("type") or ""
+    is_extra_deck = any(extra_type in card_type for extra_type in ("Fusion", "Synchro", "Xyz", "Link"))
+    if "Spell" in card_type:
+        sort_category = 1
+    elif "Trap" in card_type:
+        sort_category = 2
+    elif is_extra_deck:
+        sort_category = 3
+    else:
+        sort_category = 0
+    return {
+        "card_id": card["card_id"],
+        "deck_id": card.get("deck_id"),
+        "name": card["name"],
+        "type": card_type,
+        "rarity": card.get("rarity") or "Common",
+        "quantity": card.get("quantity", 1),
+        "available_quantity": card.get("available_quantity", card.get("quantity", 1)),
+        "category": card.get("category", "monster"),
+        "sort_category": sort_category,
+        "restriction_status": card.get("restriction_status"),
+        "image_url": f"{API_URL}{card['image_url']}" if card.get("image_url") else "",
+    }
+
+
+def card_type_sort_key(card: dict) -> tuple[int, str]:
+    card_type = card.get("type") or ""
+    is_extra_deck = any(extra_type in card_type for extra_type in ("Fusion", "Synchro", "Xyz", "Link"))
+    if "Spell" in card_type:
+        category = 1
+    elif "Trap" in card_type:
+        category = 2
+    elif is_extra_deck:
+        category = 3
+    else:
+        category = 0
+    return category, card["name"]
+
+
+def expanded_deck_cards(cards: list[dict]) -> list[dict]:
+    expanded = []
+    for card in cards:
+        for copy_number in range(card["quantity"]):
+            copy = editor_card_payload(card)
+            copy["copy_number"] = copy_number + 1
+            expanded.append(copy)
+    return expanded
+
+
+def render_deck_editor_component(player_id: int, deck_data: dict, inventory_cards: list[dict]) -> None:
+    payload = {
+        "apiUrl": API_URL,
+        "playerId": player_id,
+        "deck": {
+            "main": expanded_deck_cards(deck_data["main"]),
+            "extra": expanded_deck_cards(deck_data["extra"]),
+            "side": expanded_deck_cards(deck_data["side"]),
+            "main_count": deck_data["main_count"],
+            "extra_count": deck_data["extra_count"],
+            "side_count": deck_data["side_count"],
+            "is_main_valid": deck_data["is_main_valid"],
+            "is_extra_valid": deck_data["is_extra_valid"],
+            "is_side_valid": deck_data["is_side_valid"],
+        },
+        "inventory": [editor_card_payload(card) for card in inventory_cards],
+    }
+    html = """
+    <div id="deck-editor-root"></div>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        color: #e5e7eb;
+        font-family: "Inter", "Segoe UI", Arial, sans-serif;
+        margin: 0;
+      }
+      .editor-shell {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: minmax(720px, 1.55fr) minmax(440px, 0.95fr);
+        min-height: 1040px;
+      }
+      .deck-stack, .binder-panel {
+        background:
+          radial-gradient(circle at top left, rgba(37, 99, 235, 0.24), transparent 36%),
+          linear-gradient(135deg, #0b1020 0%, #151a2e 58%, #111827 100%);
+        border: 1px solid rgba(148, 163, 184, 0.65);
+        border-radius: 8px;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+        overflow: hidden;
+      }
+      .zone {
+        border-bottom: 1px solid rgba(148, 163, 184, 0.45);
+        padding: 8px;
+      }
+      .zone:last-child { border-bottom: 0; }
+      .zone-header {
+        align-items: center;
+        background: linear-gradient(90deg, #050816 0%, #111827 42%, rgba(30, 64, 175, 0.5) 100%);
+        border: 1px solid rgba(148, 163, 184, 0.55);
+        border-radius: 5px 5px 0 0;
+        display: flex;
+        gap: 12px;
+        height: 26px;
+        padding: 0 12px;
+      }
+      .zone-title {
+        font-size: 16px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        min-width: 78px;
+        text-transform: uppercase;
+      }
+      .zone-count {
+        background: rgba(255, 255, 255, 0.15);
+        font-size: 16px;
+        font-weight: 700;
+        min-width: 48px;
+        text-align: center;
+      }
+      .zone-status {
+        color: #cbd5e1;
+        font-size: 12px;
+        margin-left: auto;
+      }
+      .zone-cards {
+        align-content: start;
+        background: rgba(15, 23, 42, 0.74);
+        border: 1px solid rgba(96, 165, 250, 0.32);
+        border-top: 0;
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+        overflow-y: auto;
+        padding: 10px;
+      }
+      .zone-main .zone-cards { height: 520px; }
+      .zone-extra .zone-cards, .zone-side .zone-cards {
+        grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+        height: 178px;
+      }
+      .drop-active {
+        outline: 2px solid #38bdf8;
+        outline-offset: -3px;
+      }
+      .card-img {
+        aspect-ratio: 421 / 614;
+        border-radius: 3px;
+        cursor: grab;
+        display: block;
+        max-width: 100%;
+        object-fit: cover;
+        user-select: none;
+        width: 100%;
+      }
+      .card-img:active { cursor: grabbing; }
+      .deck-card {
+        position: relative;
+      }
+      .deck-card:hover .card-img, .binder-card:hover .card-img {
+        box-shadow: 0 0 0 2px #38bdf8, 0 8px 20px rgba(0,0,0,0.38);
+      }
+      .hover-preview {
+        background: rgba(2, 6, 23, 0.92);
+        border: 1px solid rgba(147, 197, 253, 0.8);
+        border-radius: 8px;
+        box-shadow: 0 18px 42px rgba(0,0,0,0.45);
+        display: none;
+        padding: 8px;
+        pointer-events: none;
+        position: fixed;
+        left: 50%;
+        max-height: calc(100vh - 28px);
+        top: 14px;
+        transform: translateX(-50%);
+        width: min(520px, 38vw);
+        z-index: 9999;
+      }
+      .hover-preview img {
+        border-radius: 5px;
+        display: block;
+        max-height: calc(100vh - 72px);
+        object-fit: contain;
+        width: 100%;
+      }
+      .hover-preview-title {
+        color: #e5e7eb;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1.2;
+        margin-top: 6px;
+      }
+      .binder-panel {
+        display: flex;
+        flex-direction: column;
+        min-height: 1040px;
+        padding: 10px;
+      }
+      .binder-tools {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: 1fr;
+        margin-bottom: 10px;
+      }
+      .binder-title {
+        align-items: center;
+        display: flex;
+        font-size: 16px;
+        font-weight: 800;
+        justify-content: space-between;
+        text-transform: uppercase;
+      }
+      .binder-title span {
+        color: #93c5fd;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: none;
+      }
+      .binder-actions {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 2px;
+      }
+      .binder-action {
+        background: #0f172a;
+        border: 1px solid rgba(148, 163, 184, 0.7);
+        border-radius: 5px;
+        color: #e5e7eb;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 700;
+        height: 32px;
+        padding: 0 10px;
+      }
+      .binder-action:hover {
+        border-color: rgba(96, 165, 250, 0.9);
+      }
+      .binder-pager {
+        align-items: center;
+        color: #cbd5e1;
+        display: flex;
+        font-size: 12px;
+        gap: 8px;
+        justify-content: space-between;
+      }
+      .pager-buttons {
+        display: flex;
+        gap: 6px;
+      }
+      .pager-button {
+        background: #0f172a;
+        border: 1px solid rgba(148, 163, 184, 0.7);
+        border-radius: 4px;
+        color: #e5e7eb;
+        cursor: pointer;
+        height: 26px;
+        min-width: 34px;
+      }
+      .pager-button:disabled {
+        cursor: default;
+        opacity: 0.42;
+      }
+      .binder-search {
+        background: #020617;
+        border: 1px solid rgba(148, 163, 184, 0.7);
+        border-radius: 5px;
+        color: #e5e7eb;
+        height: 34px;
+        padding: 0 10px;
+        width: 100%;
+      }
+      .remove-bin {
+        align-items: center;
+        background: rgba(127, 29, 29, 0.52);
+        border: 1px dashed rgba(252, 165, 165, 0.9);
+        border-radius: 6px;
+        color: #fecaca;
+        display: flex;
+        font-size: 13px;
+        font-weight: 700;
+        height: 42px;
+        justify-content: center;
+      }
+      .binder-grid {
+        align-content: start;
+        display: grid;
+        flex: 1;
+        gap: 9px;
+        grid-template-columns: repeat(auto-fill, minmax(86px, 1fr));
+        overflow-y: auto;
+        padding-right: 4px;
+      }
+      .binder-card {
+        min-width: 0;
+        position: relative;
+      }
+      .binder-card.disabled {
+        cursor: not-allowed;
+      }
+      .restriction-badge {
+        border-radius: 999px;
+        color: white;
+        font-size: 16px;
+        font-weight: 900;
+        height: 24px;
+        left: -4px;
+        line-height: 24px;
+        position: absolute;
+        text-align: center;
+        top: 2px;
+        width: 24px;
+        box-shadow: 0 0 0 2px #020617;
+      }
+      .restriction-limited { background: #b45309; }
+      .restriction-banned { background: #991b1b; }
+      .card-badge {
+        background: rgba(2, 6, 23, 0.86);
+        border: 1px solid rgba(255,255,255,0.35);
+        border-radius: 999px;
+        color: #f8fafc;
+        font-size: 11px;
+        font-weight: 800;
+        min-width: 22px;
+        padding: 1px 5px;
+        position: absolute;
+        right: 2px;
+        text-align: center;
+        top: 2px;
+      }
+      .empty-zone {
+        align-items: center;
+        color: #64748b;
+        display: flex;
+        font-size: 13px;
+        grid-column: 1 / -1;
+        justify-content: center;
+        min-height: 84px;
+      }
+      .toast {
+        background: #450a0a;
+        border: 1px solid #fca5a5;
+        border-radius: 6px;
+        color: #fee2e2;
+        display: none;
+        font-size: 13px;
+        margin-bottom: 8px;
+        padding: 8px;
+      }
+    </style>
+    <script>
+      let data = __PAYLOAD__;
+      let currentFilter = "";
+      let currentPage = 0;
+      const pageSize = 32;
+      const root = document.getElementById("deck-editor-root");
+      let lastRefreshAt = 0;
+      const DIRTY_FLAG_KEY = "ygo_editor_dirty";
+
+      function esc(value) {
+        return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+          "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+        }[char]));
+      }
+
+      function normalizedImageUrl(imageUrl) {
+        if (!imageUrl) return "";
+        return imageUrl.startsWith("/") ? `${data.apiUrl}${imageUrl}` : imageUrl;
+      }
+
+      function expandedDeckCards(cards) {
+        const expanded = [];
+        cards.forEach((card) => {
+          for (let index = 0; index < Number(card.quantity || 1); index += 1) {
+            expanded.push({
+              card_id: card.card_id,
+              deck_id: card.deck_id,
+              name: card.name,
+              type: card.type || "",
+              rarity: card.rarity || "Common",
+              quantity: card.quantity || 1,
+              category: card.category || "monster",
+              sort_category: card.sort_category ?? 0,
+              restriction_status: card.restriction_status || null,
+              image_url: normalizedImageUrl(card.image_url),
+              copy_number: index + 1
+            });
+          }
+        });
+        return expanded;
+      }
+
+      function sortCategory(cardType) {
+        const type = cardType || "";
+        if (type.includes("Spell")) return 1;
+        if (type.includes("Trap")) return 2;
+        if (["Fusion", "Synchro", "Xyz", "Link"].some((extraType) => type.includes(extraType))) return 3;
+        return 0;
+      }
+
+      function normalizeInventoryCard(card) {
+        return {
+          card_id: card.card_id,
+          name: card.name,
+          type: card.type || "",
+          rarity: card.rarity || "Common",
+          quantity: card.quantity || 0,
+          available_quantity: card.available_quantity || 0,
+          category: card.category || "monster",
+          sort_category: sortCategory(card.type),
+          restriction_status: card.restriction_status || null,
+          image_url: normalizedImageUrl(card.image_url)
+        };
+      }
+
+      function normalizeDeck(deckResponse) {
+        return {
+          main: expandedDeckCards(deckResponse.main || []),
+          extra: expandedDeckCards(deckResponse.extra || []),
+          side: expandedDeckCards(deckResponse.side || []),
+          main_count: deckResponse.main_count || 0,
+          extra_count: deckResponse.extra_count || 0,
+          side_count: deckResponse.side_count || 0,
+          is_main_valid: Boolean(deckResponse.is_main_valid),
+          is_extra_valid: Boolean(deckResponse.is_extra_valid),
+          is_side_valid: Boolean(deckResponse.is_side_valid)
+        };
+      }
+
+      async function refreshEditorData() {
+        const now = Date.now();
+        if (now - lastRefreshAt < 1500) return;
+        lastRefreshAt = now;
+        const [inventoryResponse, deckResponse] = await Promise.all([
+          fetch(`${data.apiUrl}/players/${data.playerId}/inventory`),
+          fetch(`${data.apiUrl}/players/${data.playerId}/deck`)
+        ]);
+        if (!inventoryResponse.ok || !deckResponse.ok) return;
+        data.inventory = (await inventoryResponse.json()).map(normalizeInventoryCard);
+        data.deck = normalizeDeck(await deckResponse.json());
+        try { window.localStorage.removeItem(DIRTY_FLAG_KEY); } catch (err) {}
+        render(currentFilter);
+      }
+
+      function isEditorDirty() {
+        try {
+          return window.localStorage.getItem(DIRTY_FLAG_KEY) === "1";
+        } catch (err) {
+          return false;
+        }
+      }
+
+      function changeAvailable(cardId, delta) {
+        const card = data.inventory.find((item) => Number(item.card_id) === Number(cardId));
+        if (!card) return;
+        const nextValue = Number(card.available_quantity || 0) + delta;
+        card.available_quantity = Math.max(0, Math.min(Number(card.quantity || 0), nextValue));
+      }
+
+      async function addCard(cardId, zone) {
+        const response = await fetch(`${data.apiUrl}/players/${data.playerId}/deck/cards`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ card_id: Number(cardId), zone })
+        });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload.detail || "Nao foi possivel adicionar a carta.");
+        }
+        return response.json();
+      }
+
+      async function removeDeckCard(deckId) {
+        const response = await fetch(`${data.apiUrl}/players/${data.playerId}/deck/cards/${deckId}`, {
+          method: "DELETE"
+        });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload.detail || "Nao foi possivel remover a carta.");
+        }
+        return response.json();
+      }
+
+      async function exportDeckYdke() {
+        const response = await fetch(`${data.apiUrl}/players/${data.playerId}/deck/export-ydke`);
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload.detail || "Nao foi possivel exportar o deck.");
+        }
+        return payload.ydke || "";
+      }
+
+      function showError(message) {
+        const toast = document.querySelector(".toast");
+        toast.textContent = message;
+        toast.style.background = "#450a0a";
+        toast.style.borderColor = "#fca5a5";
+        toast.style.color = "#fee2e2";
+        toast.style.display = "block";
+        setTimeout(() => { toast.style.display = "none"; }, 3500);
+      }
+
+      function showSuccess(message) {
+        const toast = document.querySelector(".toast");
+        toast.textContent = message;
+        toast.style.background = "#064e3b";
+        toast.style.borderColor = "#34d399";
+        toast.style.color = "#d1fae5";
+        toast.style.display = "block";
+        setTimeout(() => { toast.style.display = "none"; }, 2500);
+      }
+
+      function deckCardHtml(card) {
+        return `
+          <div class="deck-card" draggable="true" data-kind="deck" data-card-id="${card.card_id}" data-deck-id="${card.deck_id}" title="${esc(card.name)}">
+            <img class="card-img" src="${esc(card.image_url)}" alt="${esc(card.name)}">
+          </div>
+        `;
+      }
+
+      function zoneHtml(zone, title, count, valid, limit) {
+        const cards = data.deck[zone];
+        const cardHtml = cards.length ? cards.map(deckCardHtml).join("") : `<div class="empty-zone">Arraste cartas para ${title}</div>`;
+        return `
+          <section class="zone zone-${zone}">
+            <div class="zone-header">
+              <div class="zone-title">${title}</div>
+              <div class="zone-count">${count}</div>
+              <div class="zone-status">${limit} ${valid ? "OK" : "Ajustar"}</div>
+            </div>
+            <div class="zone-cards" data-zone="${zone}">${cardHtml}</div>
+          </section>
+        `;
+      }
+
+      function binderCardHtml(card) {
+        const disabled = Number(card.available_quantity) <= 0 || card.restriction_status === "banned";
+        const restrictionBadge = card.restriction_status
+          ? `<div class="restriction-badge restriction-${card.restriction_status}">${card.restriction_status === "banned" ? "⊘" : "1"}</div>`
+          : "";
+        return `
+          <div class="binder-card ${disabled ? "disabled" : ""}" draggable="${disabled ? "false" : "true"}"
+               data-kind="inventory" data-card-id="${card.card_id}" title="${esc(card.name)}">
+            <img class="card-img" src="${esc(card.image_url)}" alt="${esc(card.name)}">
+            ${restrictionBadge}
+            <div class="card-badge">${card.available_quantity}/${card.quantity}</div>
+          </div>
+        `;
+      }
+
+      function render(filter = "") {
+        currentFilter = filter;
+        const needle = filter.trim().toLowerCase();
+        const inventory = data.inventory
+          .filter((card) =>
+            !needle || card.name.toLowerCase().includes(needle) ||
+            card.type.toLowerCase().includes(needle) ||
+            card.rarity.toLowerCase().includes(needle)
+          )
+          .sort((left, right) =>
+            Number(left.sort_category ?? 0) - Number(right.sort_category ?? 0) ||
+            left.name.localeCompare(right.name)
+          );
+        const pageCount = Math.max(1, Math.ceil(inventory.length / pageSize));
+        currentPage = Math.min(Math.max(currentPage, 0), pageCount - 1);
+        const pageStart = currentPage * pageSize;
+        const pageInventory = inventory.slice(pageStart, pageStart + pageSize);
+
+        root.innerHTML = `
+          <div class="editor-shell">
+            <div class="hover-preview">
+              <img alt="">
+              <div class="hover-preview-title"></div>
+            </div>
+            <div class="deck-stack">
+              ${zoneHtml("main", "Main", data.deck.main_count, data.deck.is_main_valid, "40-60")}
+              ${zoneHtml("extra", "Extra", data.deck.extra_count, data.deck.is_extra_valid, "0-15")}
+              ${zoneHtml("side", "Side", data.deck.side_count, data.deck.is_side_valid, "0-15")}
+            </div>
+            <aside class="binder-panel">
+              <div class="toast"></div>
+              <div class="binder-tools">
+               <div class="binder-title">Colecao <span>arraste para o deck</span></div>
+                <div class="binder-actions">
+                  <button class="binder-action" data-export-ydke="true">Copiar .ydke</button>
+                </div>
+                <input class="binder-search" value="${esc(filter)}" placeholder="Buscar carta, tipo ou raridade">
+                <div class="binder-pager">
+                  <span>${inventory.length ? pageStart + 1 : 0}-${Math.min(pageStart + pageSize, inventory.length)} de ${inventory.length} cartas</span>
+                  <span>Pagina ${currentPage + 1}/${pageCount}</span>
+                  <div class="pager-buttons">
+                    <button class="pager-button" data-page-delta="-1" ${currentPage <= 0 ? "disabled" : ""}>‹</button>
+                    <button class="pager-button" data-page-delta="1" ${currentPage >= pageCount - 1 ? "disabled" : ""}>›</button>
+                  </div>
+                </div>
+                <div class="remove-bin" data-remove-bin="true">Arraste uma carta do deck aqui para remover</div>
+              </div>
+              <div class="binder-grid">${pageInventory.map(binderCardHtml).join("")}</div>
+            </aside>
+          </div>
+        `;
+        wireEvents();
+        const search = document.querySelector(".binder-search");
+        search.focus();
+        search.setSelectionRange(search.value.length, search.value.length);
+        search.addEventListener("input", (event) => {
+          currentPage = 0;
+          render(event.target.value);
+        });
+      }
+
+      function wireEvents() {
+        document.querySelectorAll("[draggable='true']").forEach((item) => {
+          item.addEventListener("dragstart", (event) => {
+            const payload = {
+              kind: item.dataset.kind,
+              cardId: item.dataset.cardId,
+              deckId: item.dataset.deckId
+            };
+            event.dataTransfer.setData("application/json", JSON.stringify(payload));
+          });
+          item.addEventListener("mouseenter", () => {
+            const image = item.querySelector("img");
+            const preview = document.querySelector(".hover-preview");
+            if (!image || !preview) return;
+            preview.querySelector("img").src = image.src;
+            preview.querySelector("img").alt = image.alt;
+            preview.querySelector(".hover-preview-title").textContent = image.alt;
+            preview.style.display = "block";
+          });
+          item.addEventListener("mouseleave", () => {
+            const preview = document.querySelector(".hover-preview");
+            if (preview) preview.style.display = "none";
+          });
+        });
+
+        document.querySelectorAll("[data-page-delta]").forEach((button) => {
+          button.addEventListener("click", () => {
+            currentPage += Number(button.dataset.pageDelta);
+            render(currentFilter);
+          });
+        });
+
+        const exportButton = document.querySelector("[data-export-ydke='true']");
+        exportButton.addEventListener("click", async () => {
+          try {
+            const ydke = await exportDeckYdke();
+            await navigator.clipboard.writeText(ydke);
+            showSuccess("Deck .ydke copiado para o clipboard.");
+          } catch (err) {
+            showError(err.message || "Nao foi possivel copiar o deck.");
+          }
+        });
+
+        const binderGrid = document.querySelector(".binder-grid");
+        binderGrid.addEventListener("wheel", (event) => {
+          event.preventDefault();
+          const direction = event.deltaY > 0 ? 1 : -1;
+          currentPage += direction;
+          render(currentFilter);
+        }, { passive: false });
+
+        document.querySelectorAll(".zone-cards").forEach((zone) => {
+          zone.addEventListener("dragover", (event) => {
+            event.preventDefault();
+            zone.classList.add("drop-active");
+          });
+          zone.addEventListener("dragleave", () => zone.classList.remove("drop-active"));
+          zone.addEventListener("drop", async (event) => {
+            event.preventDefault();
+            zone.classList.remove("drop-active");
+            const payload = JSON.parse(event.dataTransfer.getData("application/json") || "{}");
+            if (payload.kind !== "inventory") return;
+            try {
+              const deckResponse = await addCard(payload.cardId, zone.dataset.zone);
+              data.deck = normalizeDeck(deckResponse);
+              changeAvailable(payload.cardId, -1);
+              render(currentFilter);
+            } catch (err) {
+              showError(err.message);
+            }
+          });
+        });
+
+        const bin = document.querySelector("[data-remove-bin='true']");
+        bin.addEventListener("dragover", (event) => {
+          event.preventDefault();
+          bin.classList.add("drop-active");
+        });
+        bin.addEventListener("dragleave", () => bin.classList.remove("drop-active"));
+        bin.addEventListener("drop", async (event) => {
+          event.preventDefault();
+          bin.classList.remove("drop-active");
+            const payload = JSON.parse(event.dataTransfer.getData("application/json") || "{}");
+            if (payload.kind !== "deck") return;
+            try {
+              const deckResponse = await removeDeckCard(payload.deckId);
+              data.deck = normalizeDeck(deckResponse);
+              changeAvailable(payload.cardId, 1);
+              render(currentFilter);
+            } catch (err) {
+              showError(err.message);
+            }
+        });
+      }
+
+      render();
+      if (isEditorDirty()) {
+        refreshEditorData().catch(() => {});
+      }
+      window.setInterval(() => {
+        if (isEditorDirty()) {
+          refreshEditorData().catch(() => {});
+        }
+      }, 900);
+    </script>
+    """.replace("__PAYLOAD__", json.dumps(payload))
+    components.html(html, height=1080, scrolling=False)
+
+
+def render_collection_component(player_id: int, inventory_cards: list[dict]) -> None:
+    payload = {
+        "apiUrl": API_URL,
+        "playerId": player_id,
+        "inventory": [editor_card_payload(card) | {
+            "inventory_id": card["inventory_id"],
+            "desc": card.get("desc") or "",
+            "race": card.get("race") or "",
+            "archetype": card.get("archetype") or "",
+            "sell_price": card["sell_price"],
+        } for card in inventory_cards],
+    }
+    html = """
+    <div id="collection-root"></div>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        color: #e5e7eb;
+        font-family: "Inter", "Segoe UI", Arial, sans-serif;
+        margin: 0;
+      }
+      .collection-shell {
+        background:
+          radial-gradient(circle at top left, rgba(20, 184, 166, 0.16), transparent 34%),
+          linear-gradient(135deg, #090d18 0%, #111827 58%, #0b1020 100%);
+        border: 1px solid rgba(148, 163, 184, 0.55);
+        border-radius: 10px;
+        min-height: 820px;
+        padding: 14px;
+      }
+      .collection-head {
+        align-items: center;
+        display: grid;
+        gap: 12px;
+        grid-template-columns: 1fr auto;
+        margin-bottom: 12px;
+      }
+      .collection-title {
+        font-size: 20px;
+        font-weight: 850;
+        letter-spacing: 0.02em;
+      }
+      .collection-subtitle {
+        color: #94a3b8;
+        font-size: 12px;
+        margin-top: 2px;
+      }
+      .collection-controls {
+        align-items: center;
+        display: grid;
+        gap: 10px;
+        grid-template-columns: minmax(260px, 420px) auto auto;
+      }
+      .collection-search {
+        background: #020617;
+        border: 1px solid rgba(148, 163, 184, 0.72);
+        border-radius: 6px;
+        color: #e5e7eb;
+        height: 36px;
+        padding: 0 11px;
+        width: 100%;
+      }
+      .collection-page {
+        color: #cbd5e1;
+        font-size: 12px;
+        min-width: 142px;
+        text-align: right;
+      }
+      .collection-buttons {
+        display: flex;
+        gap: 6px;
+      }
+      .collection-button {
+        background: #0f172a;
+        border: 1px solid rgba(148, 163, 184, 0.75);
+        border-radius: 5px;
+        color: #e5e7eb;
+        cursor: pointer;
+        height: 30px;
+        min-width: 38px;
+      }
+      .collection-button:disabled {
+        cursor: default;
+        opacity: 0.45;
+      }
+      .collection-grid {
+        align-content: start;
+        display: grid;
+        gap: 13px;
+        grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+        min-height: 680px;
+      }
+      .collection-card {
+        background: rgba(15, 23, 42, 0.7);
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        border-radius: 7px;
+        cursor: pointer;
+        min-width: 0;
+        padding: 7px;
+        position: relative;
+      }
+      .collection-card:hover {
+        border-color: rgba(56, 189, 248, 0.9);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.28);
+      }
+      .collection-img {
+        aspect-ratio: 421 / 614;
+        border-radius: 5px;
+        display: block;
+        object-fit: cover;
+        width: 100%;
+      }
+      .collection-card-name {
+        color: #f8fafc;
+        font-size: 12px;
+        font-weight: 750;
+        line-height: 1.15;
+        margin-top: 7px;
+        min-height: 28px;
+      }
+      .collection-card-meta {
+        color: #93c5fd;
+        font-size: 11px;
+        line-height: 1.2;
+        margin-top: 4px;
+      }
+      .collection-badge {
+        background: rgba(2, 6, 23, 0.88);
+        border: 1px solid rgba(255,255,255,0.35);
+        border-radius: 999px;
+        color: #f8fafc;
+        font-size: 11px;
+        font-weight: 850;
+        padding: 2px 6px;
+        position: absolute;
+        right: 10px;
+        top: 10px;
+      }
+      .rarity-common { color: #cbd5e1; }
+      .rarity-rare { color: #7dd3fc; }
+      .rarity-super { color: #facc15; }
+      .rarity-ultra { color: #fb923c; }
+      .rarity-secret { color: #f0abfc; }
+      .collection-modal-backdrop {
+        align-items: center;
+        background: rgba(2, 6, 23, 0.72);
+        display: none;
+        inset: 0;
+        justify-content: center;
+        position: fixed;
+        z-index: 9999;
+      }
+      .collection-modal {
+        background: #0f172a;
+        border: 1px solid rgba(147, 197, 253, 0.65);
+        border-radius: 10px;
+        display: grid;
+        gap: 18px;
+        grid-template-columns: 290px minmax(320px, 520px);
+        max-width: 860px;
+        padding: 16px;
+      }
+      .modal-img {
+        border-radius: 7px;
+        width: 100%;
+      }
+      .modal-title {
+        font-size: 22px;
+        font-weight: 850;
+        line-height: 1.1;
+        margin-bottom: 8px;
+      }
+      .modal-meta {
+        color: #93c5fd;
+        font-size: 13px;
+        line-height: 1.45;
+        margin-bottom: 12px;
+      }
+      .modal-desc {
+        color: #dbeafe;
+        font-size: 13px;
+        line-height: 1.45;
+        max-height: 260px;
+        overflow-y: auto;
+        padding-right: 8px;
+      }
+      .modal-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 16px;
+      }
+      .sell-button, .close-button {
+        border: 0;
+        border-radius: 6px;
+        color: white;
+        cursor: pointer;
+        font-weight: 800;
+        height: 36px;
+        padding: 0 14px;
+      }
+      .sell-button { background: #b45309; }
+      .close-button { background: #334155; }
+      .collection-toast {
+        background: #450a0a;
+        border: 1px solid #fca5a5;
+        border-radius: 6px;
+        color: #fee2e2;
+        display: none;
+        font-size: 13px;
+        margin-bottom: 10px;
+        padding: 8px;
+      }
+    </style>
+    <script>
+      let data = __PAYLOAD__;
+      let currentFilter = "";
+      let currentPage = 0;
+      const pageSize = 30;
+      const root = document.getElementById("collection-root");
+
+      function esc(value) {
+        return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+          "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+        }[char]));
+      }
+
+      function rarityClass(rarity) {
+        const value = String(rarity || "").toLowerCase();
+        if (value.includes("secret")) return "rarity-secret";
+        if (value.includes("ultra")) return "rarity-ultra";
+        if (value.includes("super")) return "rarity-super";
+        if (value.includes("rare")) return "rarity-rare";
+        return "rarity-common";
+      }
+
+      function filteredInventory() {
+        const needle = currentFilter.trim().toLowerCase();
+        return data.inventory
+          .filter((card) =>
+            !needle || card.name.toLowerCase().includes(needle) ||
+            card.type.toLowerCase().includes(needle) ||
+            card.rarity.toLowerCase().includes(needle) ||
+            card.archetype.toLowerCase().includes(needle)
+          )
+          .sort((left, right) =>
+            Number(left.sort_category ?? 0) - Number(right.sort_category ?? 0) ||
+            left.name.localeCompare(right.name)
+          );
+      }
+
+      async function sellCard(inventoryId) {
+        const response = await fetch(`${data.apiUrl}/players/${data.playerId}/inventory/${inventoryId}/sell`, {
+          method: "POST"
+        });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload.detail || "Nao foi possivel vender a carta.");
+        }
+      }
+
+      function showError(message) {
+        const toast = document.querySelector(".collection-toast");
+        toast.textContent = message;
+        toast.style.background = "#450a0a";
+        toast.style.borderColor = "#fca5a5";
+        toast.style.color = "#fee2e2";
+        toast.style.display = "block";
+        setTimeout(() => { toast.style.display = "none"; }, 3500);
+      }
+
+      function showSuccess(message) {
+        const toast = document.querySelector(".collection-toast");
+        toast.textContent = message;
+        toast.style.background = "#064e3b";
+        toast.style.borderColor = "#34d399";
+        toast.style.color = "#d1fae5";
+        toast.style.display = "block";
+      }
+
+      function markEditorDirty() {
+        try { window.localStorage.setItem("ygo_editor_dirty", "1"); } catch (err) {}
+      }
+
+      function cardHtml(card) {
+        return `
+          <article class="collection-card" data-card-id="${card.card_id}">
+            <img class="collection-img" src="${esc(card.image_url)}" alt="${esc(card.name)}">
+            <div class="collection-badge">${card.available_quantity}/${card.quantity}</div>
+            <div class="collection-card-name">${esc(card.name)}</div>
+            <div class="collection-card-meta ${rarityClass(card.rarity)}">${esc(card.rarity)}<br>${esc(card.type)}</div>
+          </article>
+        `;
+      }
+
+      function openModal(card) {
+        const modal = document.querySelector(".collection-modal-backdrop");
+        modal.innerHTML = `
+          <div class="collection-modal">
+            <img class="modal-img" src="${esc(card.image_url)}" alt="${esc(card.name)}">
+            <div>
+              <div class="modal-title">${esc(card.name)}</div>
+              <div class="modal-meta">
+                ${esc(card.type)}<br>
+                ${card.race ? `Raca: ${esc(card.race)}<br>` : ""}
+                ${card.archetype ? `Arquetipo: ${esc(card.archetype)}<br>` : ""}
+                Raridade: ${esc(card.rarity)}<br>
+                Copias: ${card.available_quantity}/${card.quantity} livres
+              </div>
+              <div class="modal-desc">${esc(card.desc)}</div>
+              <div class="modal-actions">
+                <button class="sell-button">Vender por ${card.sell_price}g</button>
+                <button class="close-button">Fechar</button>
+              </div>
+            </div>
+          </div>
+        `;
+        modal.style.display = "flex";
+        modal.querySelector(".close-button").addEventListener("click", closeModal);
+        modal.addEventListener("click", (event) => {
+          if (event.target === modal) closeModal();
+        }, { once: true });
+        modal.querySelector(".sell-button").addEventListener("click", async () => {
+          try {
+            await sellCard(card.inventory_id);
+            card.quantity = Math.max(0, Number(card.quantity) - 1);
+            card.available_quantity = Math.max(0, Number(card.available_quantity) - 1);
+            if (Number(card.quantity) <= 0) {
+              data.inventory = data.inventory.filter((item) => Number(item.inventory_id) !== Number(card.inventory_id));
+            }
+            markEditorDirty();
+            closeModal();
+            render();
+            showSuccess("Carta vendida.");
+          } catch (err) {
+            showError(err.message);
+          }
+        });
+      }
+
+      function closeModal() {
+        const modal = document.querySelector(".collection-modal-backdrop");
+        modal.style.display = "none";
+      }
+
+      function render() {
+        const inventory = filteredInventory().filter((card) => Number(card.quantity) > 0);
+        const pageCount = Math.max(1, Math.ceil(inventory.length / pageSize));
+        currentPage = Math.min(Math.max(currentPage, 0), pageCount - 1);
+        const pageStart = currentPage * pageSize;
+        const pageInventory = inventory.slice(pageStart, pageStart + pageSize);
+
+        root.innerHTML = `
+          <section class="collection-shell">
+            <div class="collection-modal-backdrop"></div>
+            <div class="collection-toast"></div>
+            <div class="collection-head">
+              <div>
+                <div class="collection-title">Colecao</div>
+                <div class="collection-subtitle">Ordenada por monstros, magias, traps e Extra Deck</div>
+              </div>
+              <div class="collection-controls">
+                <input class="collection-search" value="${esc(currentFilter)}" placeholder="Buscar carta, tipo, raridade ou arquetipo">
+                <div class="collection-page">
+                  ${inventory.length ? pageStart + 1 : 0}-${Math.min(pageStart + pageSize, inventory.length)} de ${inventory.length}<br>
+                  Pagina ${currentPage + 1}/${pageCount}
+                </div>
+                <div class="collection-buttons">
+                  <button class="collection-button" data-page-delta="-1" ${currentPage <= 0 ? "disabled" : ""}>‹</button>
+                  <button class="collection-button" data-page-delta="1" ${currentPage >= pageCount - 1 ? "disabled" : ""}>›</button>
+                </div>
+              </div>
+            </div>
+            <div class="collection-grid">${pageInventory.map(cardHtml).join("")}</div>
+          </section>
+        `;
+
+        const search = document.querySelector(".collection-search");
+        search.focus();
+        search.setSelectionRange(search.value.length, search.value.length);
+        search.addEventListener("input", (event) => {
+          currentFilter = event.target.value;
+          currentPage = 0;
+          render();
+        });
+        document.querySelectorAll("[data-page-delta]").forEach((button) => {
+          button.addEventListener("click", () => {
+            currentPage += Number(button.dataset.pageDelta);
+            render();
+          });
+        });
+        const grid = document.querySelector(".collection-grid");
+        grid.addEventListener("wheel", (event) => {
+          event.preventDefault();
+          currentPage += event.deltaY > 0 ? 1 : -1;
+          render();
+        }, { passive: false });
+        document.querySelectorAll(".collection-card").forEach((cardEl) => {
+          cardEl.addEventListener("click", () => {
+            const card = data.inventory.find((item) => Number(item.card_id) === Number(cardEl.dataset.cardId));
+            if (card) openModal(card);
+          });
+        });
+      }
+
+      render();
+    </script>
+    """.replace("__PAYLOAD__", json.dumps(payload))
+    components.html(html, height=880, scrolling=False)
+
+
+def render_shop_component(player_id: int, player_gold: float, shop: dict) -> None:
+    payload = {
+        "apiUrl": API_URL,
+        "playerId": player_id,
+        "playerGold": player_gold,
+        "cards": [editor_card_payload(card) | {
+            "price": card["price"],
+            "set_code": card.get("set_code") or "",
+            "rarity": card["rarity"],
+        } for card in shop["cards"]],
+    }
+    html = """
+    <div id="shop-root"></div>
+    <style>
+      * { box-sizing: border-box; }
+      body { color:#e5e7eb; font-family:Inter, Segoe UI, Arial, sans-serif; margin:0; }
+      .shop-shell { background:linear-gradient(135deg,#090d18,#111827 58%,#0b1020); border:1px solid rgba(148,163,184,.55); border-radius:10px; padding:14px; min-height:760px; }
+      .shop-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+      .shop-gold { color:#facc15; font-weight:900; }
+      .rarity-title { color:#f8fafc; font-size:18px; font-weight:850; margin:18px 0 10px; }
+      .shop-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(92px,1fr)); gap:11px; }
+      .shop-card { background:rgba(15,23,42,.72); border:1px solid rgba(148,163,184,.28); border-radius:7px; padding:7px; min-width:0; position:relative; }
+      .shop-card:hover { border-color:rgba(56,189,248,.9); box-shadow:0 10px 30px rgba(0,0,0,.28); }
+      .shop-card.recent-buy { border-color:#34d399; box-shadow:0 0 0 1px rgba(52,211,153,.5), 0 12px 30px rgba(6,78,59,.35); }
+      .shop-img { width:100%; aspect-ratio:421/614; object-fit:cover; border-radius:5px; display:block; }
+      .shop-name { color:#f8fafc; font-size:11px; font-weight:750; line-height:1.15; min-height:26px; margin-top:6px; }
+      .shop-code { color:#93c5fd; font-size:10px; margin-top:3px; }
+      .buy-button { width:100%; height:28px; margin-top:6px; border:0; border-radius:5px; background:#b45309; color:white; font-weight:850; cursor:pointer; }
+      .buy-button:disabled { opacity:.45; cursor:not-allowed; }
+      .buy-button.recent-buy { animation:buyPulse .7s ease; background:#059669; }
+      @keyframes buyPulse {
+        0% { transform:scale(1); box-shadow:0 0 0 rgba(52,211,153,0); }
+        35% { transform:scale(1.04); box-shadow:0 0 0 5px rgba(52,211,153,.22); }
+        100% { transform:scale(1); box-shadow:0 0 0 rgba(52,211,153,0); }
+      }
+      .toast { display:none; margin-bottom:10px; padding:8px; border-radius:6px; background:#450a0a; border:1px solid #fca5a5; color:#fee2e2; font-size:13px; }
+    </style>
+    <script>
+      let data = __PAYLOAD__;
+      const root = document.getElementById("shop-root");
+      const rarityOrder = ["Common", "Rare", "Super Rare", "Ultra Rare", "Secret Rare", "Demais raridades"];
+      let recentBoughtCardId = null;
+      function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+      function fmtGold(v){v=Number(v||0); return Number.isInteger(v) ? String(v) : v.toFixed(1);}
+      function typeSort(card){
+        const t = card.type || "";
+        if (t.includes("Spell")) return 1;
+        if (t.includes("Trap")) return 2;
+        if (["Fusion","Synchro","Xyz","Link"].some(x=>t.includes(x))) return 3;
+        return 0;
+      }
+      function showError(msg){const t=document.querySelector(".toast"); t.textContent=msg; t.style.background="#450a0a"; t.style.borderColor="#fca5a5"; t.style.color="#fee2e2"; t.style.display="block"; setTimeout(()=>t.style.display="none",3000);}
+      function showSuccess(msg){const t=document.querySelector(".toast"); t.textContent=msg; t.style.background="#064e3b"; t.style.borderColor="#34d399"; t.style.color="#d1fae5"; t.style.display="block";}
+      function markEditorDirty(){try{window.localStorage.setItem("ygo_editor_dirty","1");}catch(err){}}
+      async function buy(card){
+        const res = await fetch(`${data.apiUrl}/players/${data.playerId}/shop/buy`, {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({card_id:card.card_id, rarity:card.rarity})
+        });
+        const payload = await res.json().catch(()=>({}));
+        if(!res.ok) throw new Error(payload.detail || "Nao foi possivel comprar.");
+        data.playerGold = payload.player_gold;
+      }
+      function cardHtml(card){
+        const disabled = Number(data.playerGold) < Number(card.price);
+        const recent = Number(recentBoughtCardId) === Number(card.card_id);
+        return `<article class="shop-card ${recent ? "recent-buy" : ""}">
+          <img class="shop-img" src="${esc(card.image_url)}" alt="${esc(card.name)}">
+          <div class="shop-name">${esc(card.name)}</div>
+          <div class="shop-code">${esc(card.set_code)}</div>
+          <button class="buy-button ${recent ? "recent-buy" : ""}" data-card="${card.card_id}" ${disabled?"disabled":""}>${recent ? "Comprado" : `Comprar ${card.price}g`}</button>
+        </article>`;
+      }
+      function render(){
+        const groups = {};
+        rarityOrder.forEach(r=>groups[r]=[]);
+        data.cards.forEach(card => (groups[groups[card.rarity] ? card.rarity : "Demais raridades"]).push(card));
+        root.innerHTML = `<section class="shop-shell"><div class="toast"></div><div class="shop-top"><strong>Loja</strong><span class="shop-gold">${fmtGold(data.playerGold)}g</span></div>${
+          rarityOrder.map(r=>{
+            const cards=(groups[r]||[]).sort((a,b)=>typeSort(a)-typeSort(b)||a.name.localeCompare(b.name));
+            if(!cards.length) return "";
+            return `<div class="rarity-title">${r} - ${cards[0].price}g</div><div class="shop-grid">${cards.map(cardHtml).join("")}</div>`;
+          }).join("")
+        }</section>`;
+        document.querySelectorAll("[data-card]").forEach(btn=>{
+          btn.addEventListener("click", async ()=>{
+            const card = data.cards.find(c=>Number(c.card_id)===Number(btn.dataset.card));
+            try {
+              await buy(card);
+              markEditorDirty();
+              recentBoughtCardId = card.card_id;
+              render();
+              window.setTimeout(()=>{
+                if(Number(recentBoughtCardId)===Number(card.card_id)){
+                  recentBoughtCardId = null;
+                  render();
+                }
+              }, 950);
+            } catch(err){ showError(err.message); }
+          });
+        });
+      }
+      render();
+    </script>
+    """.replace("__PAYLOAD__", json.dumps(payload))
+    components.html(html, height=820, scrolling=True)
+
+
+def render_banlist_component(player_id: int) -> None:
+    payload = {"apiUrl": API_URL, "playerId": player_id}
+    html = """
+    <div id="banlist-root"></div>
+    <style>
+      * { box-sizing:border-box; }
+      body { margin:0; color:#e5e7eb; font-family:Inter, Segoe UI, Arial, sans-serif; }
+      .ban-shell { background:linear-gradient(135deg,#090d18,#111827 58%,#0b1020); border:1px solid rgba(148,163,184,.55); border-radius:10px; padding:14px; min-height:680px; }
+      .search-row { display:flex; gap:8px; margin-bottom:12px; }
+      .search { flex:1; height:36px; background:#020617; border:1px solid rgba(148,163,184,.72); border-radius:6px; color:#e5e7eb; padding:0 11px; }
+      .action { height:36px; border:0; border-radius:6px; background:#b91c1c; color:white; font-weight:850; padding:0 14px; cursor:pointer; }
+      .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(86px,1fr)); gap:10px; margin-bottom:18px; }
+      .card { position:relative; background:rgba(15,23,42,.72); border:1px solid rgba(148,163,184,.28); border-radius:7px; padding:6px; cursor:pointer; }
+      .card:hover { border-color:rgba(248,113,113,.95); box-shadow:0 10px 30px rgba(0,0,0,.28); }
+      .img { width:100%; aspect-ratio:421/614; border-radius:5px; object-fit:cover; display:block; }
+      .name { font-size:10px; line-height:1.1; margin-top:5px; min-height:22px; color:#f8fafc; }
+      .badge { position:absolute; left:1px; top:1px; width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-weight:900; font-size:18px; box-shadow:0 0 0 2px #020617; }
+      .limited { background:#b45309; }
+      .banned { background:#991b1b; }
+      .section-title { font-weight:850; margin:12px 0 10px; }
+      .toast { display:none; margin-bottom:10px; padding:8px; border-radius:6px; background:#450a0a; border:1px solid #fca5a5; color:#fee2e2; font-size:13px; }
+    </style>
+    <script>
+      const data = __PAYLOAD__;
+      const root = document.getElementById("banlist-root");
+      let results = [];
+      let restrictions = [];
+      function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+      function imgUrl(url){return url && url.startsWith("/") ? `${data.apiUrl}${url}` : (url || "");}
+      function badge(status){ if(!status) return ""; return `<div class="badge ${status}">${status==="banned"?"⊘":"1"}</div>`; }
+      function showError(msg){const t=document.querySelector(".toast"); t.textContent=msg; t.style.display="block"; setTimeout(()=>t.style.display="none",3000);}
+      async function loadRestrictions(){
+        const res = await fetch(`${data.apiUrl}/players/${data.playerId}/restrictions`);
+        restrictions = await res.json();
+      }
+      async function search(q){
+        if(!q.trim()){results=[]; render(); return;}
+        const res = await fetch(`${data.apiUrl}/players/${data.playerId}/card-search?q=${encodeURIComponent(q.trim())}`);
+        if(!res.ok) throw new Error("Busca falhou.");
+        results = await res.json();
+        render();
+      }
+      async function restrict(cardId){
+        const res = await fetch(`${data.apiUrl}/players/${data.playerId}/restrictions`, {
+          method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({card_id:Number(cardId)})
+        });
+        if(!res.ok){const p=await res.json().catch(()=>({})); throw new Error(p.detail||"Nao foi possivel alterar.");}
+        restrictions = await res.json();
+        render();
+      }
+      function resultCard(card){return `<article class="card" data-restrict="${card.card_id}"><img class="img" src="${esc(imgUrl(card.image_url))}"><div class="name">${esc(card.name)}</div></article>`;}
+      function restrictionCard(card){return `<article class="card"><img class="img" src="${esc(imgUrl(card.image_url))}">${badge(card.status)}</article>`;}
+      function render(){
+        root.innerHTML = `<section class="ban-shell"><div class="toast"></div><div class="search-row"><input class="search" placeholder="Pesquisar carta"><button class="action">Buscar</button></div><div class="grid">${results.map(resultCard).join("")}</div><div class="section-title">Cartas limitadas e banidas</div><div class="grid">${restrictions.map(restrictionCard).join("")}</div></section>`;
+        const input=document.querySelector(".search");
+        document.querySelector(".action").addEventListener("click",()=>search(input.value).catch(e=>showError(e.message)));
+        input.addEventListener("keydown",e=>{if(e.key==="Enter") search(input.value).catch(err=>showError(err.message));});
+        document.querySelectorAll("[data-restrict]").forEach(el=>el.addEventListener("click",()=>restrict(el.dataset.restrict).catch(e=>showError(e.message))));
+      }
+      loadRestrictions().then(render).catch(e=>{render(); showError(e.message);});
+    </script>
+    """.replace("__PAYLOAD__", json.dumps(payload))
+    components.html(html, height=740, scrolling=True)
+
+
+editor_tab, collection_tab, shop_tab, banlist_tab = st.tabs(["Editor de Deck", "Colecao", "Loja", "Banlist"])
+
+with editor_tab:
+    if not inventory:
+        st.info("Inventario vazio. Importe um .ydk para popular o binder inicial.")
+    render_deck_editor_component(player["id"], deck, inventory)
+
+with collection_tab:
+    render_collection_component(player["id"], inventory)
+
+with shop_tab:
+    current_shop_collection = current_collection["set_name"] if current_collection else "Passe a primeira rodada para abrir LOB"
+    st.caption(f"Colecao atual: {current_shop_collection}")
+    if not current_collection:
+        st.info("Passe a primeira rodada para liberar a primeira colecao da loja.")
+    else:
+        try:
+            shop = api_get(f"/players/{player['id']}/shop")
+        except requests.HTTPError as exc:
+            st.error(f"Erro ao carregar loja: {error_message(exc)}")
+            st.stop()
+        render_shop_component(player["id"], player["gold"], shop)
+
+with banlist_tab:
+    st.caption("Clique em uma carta para limitar. Clique de novo para banir.")
+    render_banlist_component(player["id"])
