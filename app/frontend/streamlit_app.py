@@ -344,6 +344,7 @@ try:
 except requests.HTTPError as exc:
     st.error(f"Erro ao carregar inventario: {error_message(exc)}")
     st.stop()
+starter_imported = any(card.get("source") == "starter_deck" for card in inventory)
 
 try:
     year_pick = api_get(f"/players/{player['id']}/year-pick")
@@ -364,7 +365,7 @@ if player.get("boss_pick_pending"):
     st.info("Escolha seu boss monster inicial para liberar o perfil completo.")
 
 actions = st.columns([2, 2, 6])
-if inventory:
+if starter_imported:
     actions[0].caption("Starter Deck ja importado.")
 else:
     uploaded_file = actions[0].file_uploader("Importar Starter Deck (.ydk)", type=["ydk"])

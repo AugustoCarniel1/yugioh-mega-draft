@@ -27,6 +27,7 @@ class InventoryCardRead(BaseModel):
     rarity: str
     quantity: int
     available_quantity: int
+    source: str = "starter_deck"
     sell_price: float
     restriction_status: str | None = None
     image_url: str | None = None

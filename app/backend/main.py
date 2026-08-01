@@ -106,6 +106,7 @@ def get_inventory(player_id: int, session: Session = Depends(get_session)) -> li
                 rarity=item.rarity,
                 quantity=item.quantity,
                 available_quantity=available_quantity,
+                source=item.source,
                 sell_price=sell_price_for_rarity(item.rarity),
                 restriction_status=restrictions.get(card.id),
                 image_url=image_url,
