@@ -44,6 +44,22 @@ def format_gold(value: float | int) -> str:
     return str(int(value)) if value.is_integer() else f"{value:.1f}"
 
 
+def collection_year_from_item(collection: dict | None) -> int | None:
+    if not collection or not collection.get("tcg_date"):
+        return None
+    try:
+        return int(str(collection["tcg_date"]))
+    except ValueError:
+        return None
+
+
+def round_gold_gain_for_collection(collection: dict | None) -> int:
+    year = collection_year_from_item(collection)
+    if year is None:
+        return 10
+    return 10 + max(year - 2002, 0)
+
+
 def render_gold_metric(player_id: int, initial_gold: float) -> None:
     payload = {
         "apiUrl": API_URL,
@@ -318,6 +334,8 @@ current_collection = next(
     (item for item in collections if item["position"] == player["current_collection_index"]),
     None,
 )
+current_year = collection_year_from_item(current_collection)
+current_round_gold_gain = round_gold_gain_for_collection(current_collection)
 round_label = "Inicial" if player["current_collection_index"] < 0 else player["current_collection_index"] + 1
 collection_label = current_collection["set_name"] if current_collection else "Sem colecao"
 
@@ -327,11 +345,21 @@ except requests.HTTPError as exc:
     st.error(f"Erro ao carregar inventario: {error_message(exc)}")
     st.stop()
 
-top_cols = st.columns([2, 2, 3])
+try:
+    year_pick = api_get(f"/players/{player['id']}/year-pick")
+except requests.HTTPError as exc:
+    st.error(f"Erro ao carregar pick anual: {error_message(exc)}")
+    st.stop()
+
+top_cols = st.columns([2, 2, 3, 2])
 with top_cols[0]:
     render_gold_metric(player["id"], player["gold"])
 top_cols[1].metric("Rodada", round_label)
 top_cols[2].metric("Main Collection", collection_label)
+top_cols[3].metric("Gold/Rodada", f"{current_round_gold_gain}g")
+
+if year_pick.get("pending"):
+    st.warning(f"Pick anual de {year_pick['year']} pendente antes da loja.")
 
 actions = st.columns([2, 2, 6])
 if inventory:
@@ -348,12 +376,21 @@ else:
         except requests.HTTPError as exc:
             st.error(error_message(exc))
 
-if actions[1].button("Passar Rodada (+10g)"):
+advance_label = f"Passar Rodada (+{current_round_gold_gain}g)"
+if actions[1].button(advance_label, disabled=bool(year_pick.get("pending"))):
     try:
         result = api_post(f"/players/{player['id']}/advance-round")
         remember_player(player["id"])
         collection_name = result.get("collection_name") or "sem colecao sincronizada"
-        st.success(f"Rodada avancada. Proxima colecao: {collection_name}.")
+        gold_gain = int(result.get("gold_gain", current_round_gold_gain))
+        pending_year = result.get("player", {}).get("pending_year_pick_year")
+        if pending_year:
+            st.success(
+                f"Rodada avancada. +{gold_gain}g. Proxima colecao: {collection_name}. "
+                f"Pick anual de {pending_year} liberado."
+            )
+        else:
+            st.success(f"Rodada avancada. +{gold_gain}g. Proxima colecao: {collection_name}.")
         st.rerun()
     except requests.HTTPError as exc:
         st.error(error_message(exc))
@@ -524,6 +561,225 @@ def render_deck_zone(title: str, cards: list[dict], count: int, valid: bool, lim
                 except requests.HTTPError as exc:
                     st.error(error_message(exc))
     st.markdown("</div>", unsafe_allow_html=True)
+
+
+def render_year_pick_tab(player_id: int, year_pick: dict) -> None:
+    if not year_pick.get("pending"):
+        st.info("Nenhum pick anual pendente.")
+        return
+    payload = {
+        "apiUrl": API_URL,
+        "playerId": player_id,
+        "year": year_pick["year"],
+        "claims": year_pick.get("claims", {}),
+        "quotas": year_pick.get("quotas", {}),
+        "cards": [
+            editor_card_payload(card)
+            | {
+                "rarity_bucket": card["rarity_bucket"],
+                "rarity": card["rarity"],
+            }
+            for card in year_pick.get("cards", [])
+        ],
+    }
+    html = """
+    <div id="year-pick-root"></div>
+    <style>
+      * { box-sizing: border-box; }
+      body { color:#e5e7eb; font-family:Inter, Segoe UI, Arial, sans-serif; margin:0; }
+      .pick-shell { background:linear-gradient(135deg,#090d18,#111827 58%,#0b1020); border:1px solid rgba(148,163,184,.55); border-radius:10px; padding:14px; min-height:760px; }
+      .pick-top { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:12px; }
+      .pick-title { color:#f8fafc; font-size:18px; font-weight:850; }
+      .pick-subtitle { color:#cbd5e1; font-size:12px; margin-top:4px; }
+      .pick-search { width:280px; max-width:100%; height:30px; background:#020617; border:1px solid rgba(148,163,184,.7); border-radius:5px; color:#e5e7eb; padding:0 10px; }
+      .pick-section { margin-top:18px; border:1px solid rgba(148,163,184,.22); border-radius:8px; background:rgba(2,6,23,.18); overflow:hidden; }
+      .pick-section-toggle { width:100%; display:flex; align-items:center; justify-content:space-between; gap:12px; background:rgba(15,23,42,.82); border:0; color:#f8fafc; cursor:pointer; padding:12px 14px; text-align:left; }
+      .pick-section-toggle:hover { background:rgba(30,41,59,.88); }
+      .pick-section-title { color:#f8fafc; font-size:18px; font-weight:850; margin:0; }
+      .pick-section-meta { color:#93c5fd; font-size:12px; font-weight:700; margin-top:3px; }
+      .pick-section-caret { color:#cbd5e1; font-size:18px; font-weight:900; line-height:1; }
+      .pick-section-body { padding:12px; }
+      .pick-section.collapsed .pick-section-body { display:none; }
+      .pick-grid { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:8px; }
+      .pick-card { background:rgba(15,23,42,.72); border:1px solid rgba(148,163,184,.28); border-radius:7px; padding:5px; min-width:0; position:relative; }
+      .pick-card:hover { border-color:rgba(56,189,248,.9); box-shadow:0 10px 30px rgba(0,0,0,.28); }
+      .pick-img { width:100%; aspect-ratio:421/614; object-fit:cover; border-radius:5px; display:block; }
+      .pick-name { color:#f8fafc; font-size:10px; font-weight:750; line-height:1.1; min-height:22px; margin-top:4px; }
+      .pick-code { color:#93c5fd; font-size:9px; margin-top:2px; }
+      .pick-button { width:100%; height:22px; margin-top:4px; border:0; border-radius:4px; background:#b45309; color:white; font-size:10px; font-weight:850; cursor:pointer; padding:0 4px; }
+      .pick-button:disabled { opacity:.45; cursor:not-allowed; }
+      .pick-hover-preview {
+        background: rgba(2, 6, 23, 0.92);
+        border: 1px solid rgba(147, 197, 253, 0.8);
+        border-radius: 8px;
+        box-shadow: 0 18px 42px rgba(0,0,0,0.45);
+        display: none;
+        left: 50%;
+        max-height: calc(100vh - 28px);
+        padding: 8px;
+        pointer-events: none;
+        position: fixed;
+        top: 14px;
+        transform: translateX(-50%);
+        width: min(520px, 38vw);
+        z-index: 9999;
+      }
+      .pick-hover-preview img { border-radius:5px; display:block; max-height:calc(100vh - 72px); object-fit:contain; width:100%; }
+      .pick-hover-preview-title { color:#e5e7eb; font-size:12px; font-weight:700; line-height:1.2; margin-top:6px; }
+      .toast { display:none; margin-bottom:10px; padding:8px; border-radius:6px; background:#450a0a; border:1px solid #fca5a5; color:#fee2e2; font-size:13px; }
+      @media (max-width: 1400px) { .pick-grid { grid-template-columns:repeat(10,minmax(0,1fr)); } }
+      @media (max-width: 1180px) { .pick-grid { grid-template-columns:repeat(8,minmax(0,1fr)); } }
+      @media (max-width: 900px) { .pick-grid { grid-template-columns:repeat(6,minmax(0,1fr)); } }
+      @media (max-width: 680px) { .pick-grid { grid-template-columns:repeat(4,minmax(0,1fr)); } .pick-top { flex-direction:column; align-items:stretch; } .pick-search { width:100%; } }
+    </style>
+    <script>
+      let data = __PAYLOAD__;
+      const root = document.getElementById("year-pick-root");
+      const bucketOrder = ["common", "rare", "super", "ultra", "secret", "prismatic", "other"];
+      const bucketLabels = {
+        common: "Common",
+        rare: "Rare",
+        super: "Super",
+        ultra: "Ultra",
+        secret: "Secret",
+        prismatic: "Prismatic",
+        other: "Outras"
+      };
+      let currentFilter = "";
+      let collapsedBuckets = {};
+      function esc(v){return String(v??"").replace(/[&<>\"']/g,c=>({\"&\":\"&amp;\",\"<\":\"&lt;\",\">\":\"&gt;\",'\"':\"&quot;\",\"'\":\"&#39;\"}[c]));}
+      function showError(msg){const t=document.querySelector(".toast"); t.textContent=msg; t.style.background="#450a0a"; t.style.borderColor="#fca5a5"; t.style.color="#fee2e2"; t.style.display="block"; setTimeout(()=>t.style.display="none",3000);}
+      function showSuccess(msg){const t=document.querySelector(".toast"); t.textContent=msg; t.style.background="#064e3b"; t.style.borderColor="#34d399"; t.style.color="#d1fae5"; t.style.display="block"; setTimeout(()=>t.style.display="none",2200);}
+      function markEditorDirty(){try{window.localStorage.setItem("ygo_editor_dirty","1");}catch(err){}}
+      function ensureCollapsedState(){
+        bucketOrder.forEach(bucket => {
+          if (collapsedBuckets[bucket] !== undefined) return;
+          const claimed = Number((data.claims || {})[bucket] || 0);
+          const quota = Number((data.quotas || {})[bucket] || 2);
+          collapsedBuckets[bucket] = claimed >= quota;
+        });
+      }
+      async function claim(cardId){
+        const res = await fetch(`${data.apiUrl}/players/${data.playerId}/year-pick/claim`, {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({card_id:Number(cardId)})
+        });
+        const payload = await res.json().catch(()=>({}));
+        if(!res.ok) throw new Error(payload.detail || "Nao foi possivel pegar a carta.");
+        data.claims = payload.claims || data.claims;
+        data.quotas = payload.quotas || data.quotas;
+        if (!payload.pending) {
+          data.year = null;
+          data.cards = [];
+        }
+      }
+      function filteredCards(bucket){
+        const needle = currentFilter.trim().toLowerCase();
+        return data.cards.filter(card =>
+          card.rarity_bucket === bucket && (
+            !needle ||
+            card.name.toLowerCase().includes(needle) ||
+            (card.type || "").toLowerCase().includes(needle) ||
+            (card.rarity || "").toLowerCase().includes(needle)
+          )
+        );
+      }
+      function cardHtml(card, disabled){
+        return `<article class="pick-card">
+          <img class="pick-img" src="${esc(card.image_url)}" alt="${esc(card.name)}">
+          <div class="pick-name">${esc(card.name)}</div>
+          <div class="pick-code">${esc(card.rarity)}</div>
+          <button class="pick-button" data-card="${card.card_id}" ${disabled ? "disabled" : ""}>Pegar</button>
+        </article>`;
+      }
+      function render(){
+        ensureCollapsedState();
+        if (!data.cards.length) {
+          root.innerHTML = `<section class="pick-shell"><div class="pick-title">Pick Anual</div><div class="pick-subtitle">Nenhum pick anual pendente.</div></section>`;
+          return;
+        }
+        root.innerHTML = `<section class="pick-shell">
+          <div class="pick-hover-preview"><img alt=""><div class="pick-hover-preview-title"></div></div>
+          <div class="toast"></div>
+          <div class="pick-top">
+            <div>
+              <div class="pick-title">Pick anual de ${data.year}</div>
+              <div class="pick-subtitle">Resolva este resgate antes de acessar a loja do proximo ano.</div>
+            </div>
+            <input class="pick-search" value="${esc(currentFilter)}" placeholder="Buscar carta, tipo ou raridade">
+          </div>
+          ${bucketOrder.map(bucket => {
+            const claimed = Number((data.claims || {})[bucket] || 0);
+            const quota = Number((data.quotas || {})[bucket] || 2);
+            const cards = filteredCards(bucket);
+            if (!cards.length) return "";
+            const disabled = claimed >= quota;
+            const collapsed = !!collapsedBuckets[bucket];
+            return `<section class="pick-section ${collapsed ? "collapsed" : ""}">
+              <button class="pick-section-toggle" data-toggle-bucket="${bucket}">
+                <div>
+                  <div class="pick-section-title">${bucketLabels[bucket]} - ${claimed}/${quota}</div>
+                  <div class="pick-section-meta">${cards.length} cartas disponiveis</div>
+                </div>
+                <span class="pick-section-caret">${collapsed ? "+" : "-"}</span>
+              </button>
+              <div class="pick-section-body">
+                <div class="pick-grid">${cards.map(card => cardHtml(card, disabled)).join("")}</div>
+              </div>
+            </section>`;
+          }).join("")}
+        </section>`;
+        const search = document.querySelector(".pick-search");
+        search.addEventListener("input", (event) => {
+          currentFilter = event.target.value;
+          render();
+        });
+        document.querySelectorAll("[data-toggle-bucket]").forEach(button => {
+          button.addEventListener("click", () => {
+            const bucket = button.dataset.toggleBucket;
+            collapsedBuckets[bucket] = !collapsedBuckets[bucket];
+            render();
+          });
+        });
+        document.querySelectorAll(".pick-card").forEach(cardEl => {
+          cardEl.addEventListener("mouseenter", () => {
+            const image = cardEl.querySelector(".pick-img");
+            const preview = document.querySelector(".pick-hover-preview");
+            if (!image || !preview) return;
+            preview.querySelector("img").src = image.src;
+            preview.querySelector("img").alt = image.alt;
+            preview.querySelector(".pick-hover-preview-title").textContent = image.alt;
+            preview.style.display = "block";
+          });
+          cardEl.addEventListener("mouseleave", () => {
+            const preview = document.querySelector(".pick-hover-preview");
+            if (preview) preview.style.display = "none";
+          });
+        });
+        document.querySelectorAll("[data-card]").forEach(btn => {
+          btn.addEventListener("click", async () => {
+            try {
+              const card = data.cards.find(item => Number(item.card_id) === Number(btn.dataset.card));
+              await claim(btn.dataset.card);
+              if (card) {
+                const bucket = card.rarity_bucket;
+                const claimed = Number((data.claims || {})[bucket] || 0);
+                const quota = Number((data.quotas || {})[bucket] || 2);
+                if (claimed >= quota) collapsedBuckets[bucket] = true;
+              }
+              markEditorDirty();
+              render();
+              showSuccess("Carta adicionada ao inventario.");
+            } catch (err) {
+              showError(err.message);
+            }
+          });
+        });
+      }
+      render();
+    </script>
+    """.replace("__PAYLOAD__", json.dumps(payload))
+    components.html(html, height=880, scrolling=True)
 
 
 def editor_card_payload(card: dict) -> dict:
@@ -1675,13 +1931,13 @@ def render_shop_component(player_id: int, player_gold: float, shop: dict) -> Non
       .shop-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
       .shop-gold { color:#facc15; font-weight:900; }
       .rarity-title { color:#f8fafc; font-size:18px; font-weight:850; margin:18px 0 10px; }
-      .shop-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(92px,1fr)); gap:11px; }
-      .shop-card { background:rgba(15,23,42,.72); border:1px solid rgba(148,163,184,.28); border-radius:7px; padding:7px; min-width:0; position:relative; }
+      .shop-grid { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:8px; }
+      .shop-card { background:rgba(15,23,42,.72); border:1px solid rgba(148,163,184,.28); border-radius:7px; padding:5px; min-width:0; position:relative; }
       .shop-card:hover { border-color:rgba(56,189,248,.9); box-shadow:0 10px 30px rgba(0,0,0,.28); }
       .shop-card.recent-buy { border-color:#34d399; box-shadow:0 0 0 1px rgba(52,211,153,.5), 0 12px 30px rgba(6,78,59,.35); }
       .shop-img { width:100%; aspect-ratio:421/614; object-fit:cover; border-radius:5px; display:block; }
-      .shop-name { color:#f8fafc; font-size:11px; font-weight:750; line-height:1.15; min-height:26px; margin-top:6px; }
-      .shop-code { color:#93c5fd; font-size:10px; margin-top:3px; }
+      .shop-name { color:#f8fafc; font-size:10px; font-weight:750; line-height:1.1; min-height:22px; margin-top:4px; }
+      .shop-code { color:#93c5fd; font-size:9px; margin-top:2px; }
       .shop-hover-preview {
         background: rgba(2, 6, 23, 0.92);
         border: 1px solid rgba(147, 197, 253, 0.8);
@@ -1712,9 +1968,13 @@ def render_shop_component(player_id: int, player_gold: float, shop: dict) -> Non
         line-height: 1.2;
         margin-top: 6px;
       }
-      .buy-button { width:100%; height:28px; margin-top:6px; border:0; border-radius:5px; background:#b45309; color:white; font-weight:850; cursor:pointer; }
+      .buy-button { width:100%; height:22px; margin-top:4px; border:0; border-radius:4px; background:#b45309; color:white; font-size:10px; font-weight:850; cursor:pointer; padding:0 4px; }
       .buy-button:disabled { opacity:.45; cursor:not-allowed; }
       .buy-button.recent-buy { animation:buyPulse .7s ease; background:#059669; }
+      @media (max-width: 1400px) { .shop-grid { grid-template-columns:repeat(10,minmax(0,1fr)); } }
+      @media (max-width: 1180px) { .shop-grid { grid-template-columns:repeat(8,minmax(0,1fr)); } }
+      @media (max-width: 900px) { .shop-grid { grid-template-columns:repeat(6,minmax(0,1fr)); } }
+      @media (max-width: 680px) { .shop-grid { grid-template-columns:repeat(4,minmax(0,1fr)); } }
       @keyframes buyPulse {
         0% { transform:scale(1); box-shadow:0 0 0 rgba(52,211,153,0); }
         35% { transform:scale(1.04); box-shadow:0 0 0 5px rgba(52,211,153,.22); }
@@ -1873,7 +2133,9 @@ def render_banlist_component(player_id: int) -> None:
     components.html(html, height=740, scrolling=True)
 
 
-editor_tab, collection_tab, shop_tab, banlist_tab = st.tabs(["Editor de Deck", "Colecao", "Loja", "Banlist"])
+editor_tab, collection_tab, shop_tab, year_pick_tab, banlist_tab = st.tabs(
+    ["Editor de Deck", "Colecao", "Loja", "Pick Anual", "Banlist"]
+)
 
 with editor_tab:
     if not inventory:
@@ -1888,6 +2150,8 @@ with shop_tab:
     st.caption(f"Colecao atual: {current_shop_collection}")
     if not current_collection:
         st.info("Passe a primeira rodada para liberar a primeira colecao da loja.")
+    elif year_pick.get("pending"):
+        st.warning(f"Resolva primeiro o pick anual de {year_pick['year']} para liberar a loja.")
     else:
         try:
             shop = api_get(f"/players/{player['id']}/shop")
@@ -1895,6 +2159,9 @@ with shop_tab:
             st.error(f"Erro ao carregar loja: {error_message(exc)}")
             st.stop()
         render_shop_component(player["id"], player["gold"], shop)
+
+with year_pick_tab:
+    render_year_pick_tab(player["id"], year_pick)
 
 with banlist_tab:
     st.caption("Clique em uma carta para limitar. Clique de novo para banir.")

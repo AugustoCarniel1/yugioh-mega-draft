@@ -7,13 +7,14 @@ from sqlalchemy.orm import Session
 from app.core.config import STATIC_DIR, ensure_local_dirs
 from app.db import get_session, init_db
 from app.models import Card, CollectionProgress, InventoryItem, Player
-from app.schemas import CardRestrictionRead, CardSearchRead, CollectionRead, DeckMutation, DeckRead, InventoryCardRead, PlayerCreate, PlayerRead, RestrictCardRequest, RoundAdvanceRead, ShopBuyRequest, ShopRead
+from app.schemas import CardRestrictionRead, CardSearchRead, CollectionRead, DeckMutation, DeckRead, InventoryCardRead, PlayerCreate, PlayerRead, RestrictCardRequest, RoundAdvanceRead, ShopBuyRequest, ShopRead, YearPickClaimRequest, YearPickRead
 from app.services.deck import add_card_to_deck, build_deck_response, deck_counts_by_card, export_deck_as_ydke, remove_card_from_deck
 from app.services.game import advance_round, create_player, delete_player, import_ydk_to_inventory, sell_inventory_card
 from app.services.pricing import sell_price_for_rarity
 from app.services.restrictions import clear_card_restriction, list_restrictions, restriction_status_map, search_cards_by_name, set_card_limited_or_banned
 from app.services.shop import buy_shop_card, get_shop_cards
 from app.services.ydk import export_ydke
+from app.services.year_pick import pending_year_pick, claim_year_pick_card
 from app.services.ygoprodeck import ensure_card_image, sync_collections
 
 
@@ -198,10 +199,30 @@ def sell_card(player_id: int, inventory_id: int, session: Session = Depends(get_
 @app.post("/players/{player_id}/advance-round", response_model=RoundAdvanceRead)
 def advance_round_route(player_id: int, session: Session = Depends(get_session)) -> RoundAdvanceRead:
     try:
-        player, collection = advance_round(session, player_id)
+        player, collection, gold_gain = advance_round(session, player_id)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return RoundAdvanceRead(player=PlayerRead.model_validate(player), collection_name=collection.set_name if collection else None)
+    return RoundAdvanceRead(
+        player=PlayerRead.model_validate(player),
+        collection_name=collection.set_name if collection else None,
+        gold_gain=gold_gain,
+    )
+
+
+@app.get("/players/{player_id}/year-pick", response_model=YearPickRead)
+def get_year_pick(player_id: int, session: Session = Depends(get_session)) -> dict:
+    try:
+        return pending_year_pick(session, player_id)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/players/{player_id}/year-pick/claim", response_model=YearPickRead)
+def claim_year_pick(player_id: int, payload: YearPickClaimRequest, session: Session = Depends(get_session)) -> dict:
+    try:
+        return claim_year_pick_card(session, player_id, payload.card_id)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/players/{player_id}/shop", response_model=ShopRead)

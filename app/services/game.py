@@ -8,6 +8,7 @@ from app.models import CardRestriction, CollectionProgress, DeckCard, InventoryI
 from app.services.deck import card_copies_in_deck, trim_card_from_deck
 from app.services.pricing import sell_price_for_rarity
 from app.services.ydk import parse_ydk
+from app.services.year_pick import collection_year, get_collection_by_position, round_gold_for_player
 from app.services.ygoprodeck import best_card_rarity, get_or_fetch_card
 
 
@@ -103,13 +104,24 @@ def sell_inventory_card(session: Session, player_id: int, inventory_id: int) -> 
     return price
 
 
-def advance_round(session: Session, player_id: int) -> tuple[Player, CollectionProgress | None]:
+def advance_round(session: Session, player_id: int) -> tuple[Player, CollectionProgress | None, int]:
     player = session.get(Player, player_id)
     if not player:
         raise ValueError("Jogador nao encontrado.")
+    if player.pending_year_pick_year is not None:
+        raise ValueError("Resolva o pick anual pendente antes de passar a rodada.")
 
-    player.gold += 10
+    current_collection = get_collection_by_position(session, player.current_collection_index)
+    next_collection = get_collection_by_position(session, player.current_collection_index + 1)
+    gold_gain = round_gold_for_player(session, player)
+
+    player.gold += gold_gain
     player.current_collection_index += 1
+    current_year = collection_year(current_collection)
+    next_year = collection_year(next_collection)
+    if current_year is not None and next_year is not None and next_year > current_year:
+        player.pending_year_pick_year = current_year
+        player.year_pick_claims = {}
     session.add(player)
     session.commit()
     session.refresh(player)
@@ -117,4 +129,4 @@ def advance_round(session: Session, player_id: int) -> tuple[Player, CollectionP
     collection = session.execute(
         select(CollectionProgress).where(CollectionProgress.position == player.current_collection_index)
     ).scalar_one_or_none()
-    return player, collection
+    return player, collection, gold_gain

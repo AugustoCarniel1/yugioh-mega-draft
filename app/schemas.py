@@ -12,6 +12,7 @@ class PlayerRead(BaseModel):
     name: str
     gold: float
     current_collection_index: int
+    pending_year_pick_year: int | None = None
 
 
 class InventoryCardRead(BaseModel):
@@ -84,6 +85,7 @@ class DeckRead(BaseModel):
 class RoundAdvanceRead(BaseModel):
     player: PlayerRead
     collection_name: str | None = None
+    gold_gain: int = 0
 
 
 class CollectionRead(BaseModel):
@@ -119,3 +121,24 @@ class ShopRead(BaseModel):
 class ShopBuyRequest(BaseModel):
     card_id: int
     rarity: str
+
+
+class YearPickCardRead(BaseModel):
+    card_id: int
+    name: str
+    type: str | None = None
+    rarity: str
+    rarity_bucket: str
+    image_url: str | None = None
+
+
+class YearPickRead(BaseModel):
+    pending: bool
+    year: int | None = None
+    claims: dict[str, int]
+    quotas: dict[str, int]
+    cards: list[YearPickCardRead]
+
+
+class YearPickClaimRequest(BaseModel):
+    card_id: int

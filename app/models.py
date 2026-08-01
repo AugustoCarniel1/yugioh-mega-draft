@@ -16,6 +16,8 @@ class Player(Base):
     name: Mapped[str] = mapped_column(String, unique=True, index=True)
     gold: Mapped[float] = mapped_column(Float, default=0)
     current_collection_index: Mapped[int] = mapped_column(Integer, default=-1)
+    pending_year_pick_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    year_pick_claims: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     inventory_items: Mapped[list["InventoryItem"]] = relationship(back_populates="player", cascade="all, delete-orphan")
