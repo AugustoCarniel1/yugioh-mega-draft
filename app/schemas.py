@@ -12,6 +12,7 @@ class PlayerRead(BaseModel):
     name: str
     gold: float
     current_collection_index: int
+    boss_pick_pending: bool = False
     pending_year_pick_year: int | None = None
 
 
@@ -121,6 +122,11 @@ class ShopRead(BaseModel):
 class ShopBuyRequest(BaseModel):
     card_id: int
     rarity: str
+
+
+class BossPickRequest(BaseModel):
+    card_id: int
+    start_year: int
 
 
 class YearPickCardRead(BaseModel):

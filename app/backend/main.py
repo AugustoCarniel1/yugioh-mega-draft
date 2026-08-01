@@ -7,9 +7,9 @@ from sqlalchemy.orm import Session
 from app.core.config import STATIC_DIR, ensure_local_dirs
 from app.db import get_session, init_db
 from app.models import Card, CollectionProgress, InventoryItem, Player
-from app.schemas import CardRestrictionRead, CardSearchRead, CollectionRead, DeckMutation, DeckRead, InventoryCardRead, PlayerCreate, PlayerRead, RestrictCardRequest, RoundAdvanceRead, ShopBuyRequest, ShopRead, YearPickClaimRequest, YearPickRead
+from app.schemas import BossPickRequest, CardRestrictionRead, CardSearchRead, CollectionRead, DeckMutation, DeckRead, InventoryCardRead, PlayerCreate, PlayerRead, RestrictCardRequest, RoundAdvanceRead, ShopBuyRequest, ShopRead, YearPickClaimRequest, YearPickRead
 from app.services.deck import add_card_to_deck, build_deck_response, deck_counts_by_card, export_deck_as_ydke, remove_card_from_deck
-from app.services.game import advance_round, create_player, delete_player, import_ydk_to_inventory, sell_inventory_card
+from app.services.game import advance_round, claim_boss_pick, create_player, delete_player, import_ydk_to_inventory, sell_inventory_card
 from app.services.pricing import sell_price_for_rarity
 from app.services.restrictions import clear_card_restriction, list_restrictions, restriction_status_map, search_cards_by_name, set_card_limited_or_banned
 from app.services.shop import buy_shop_card, get_shop_cards
@@ -115,10 +115,10 @@ def get_inventory(player_id: int, session: Session = Depends(get_session)) -> li
 
 
 @app.get("/players/{player_id}/card-search", response_model=list[CardSearchRead])
-def search_cards(player_id: int, q: str, session: Session = Depends(get_session)) -> list[CardSearchRead]:
+def search_cards(player_id: int, q: str, monster_only: bool = False, session: Session = Depends(get_session)) -> list[CardSearchRead]:
     if not session.get(Player, player_id):
         raise HTTPException(status_code=404, detail="Jogador nao encontrado.")
-    cards = search_cards_by_name(session, q, limit=10)
+    cards = search_cards_by_name(session, q, limit=10, monster_only=monster_only)
     return [
         CardSearchRead(
             card_id=card.id,
@@ -128,6 +128,14 @@ def search_cards(player_id: int, q: str, session: Session = Depends(get_session)
         )
         for card in cards
     ]
+
+
+@app.post("/players/{player_id}/boss-pick", response_model=PlayerRead)
+def choose_boss_pick(player_id: int, payload: BossPickRequest, session: Session = Depends(get_session)) -> Player:
+    try:
+        return claim_boss_pick(session, player_id, payload.card_id, payload.start_year)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/players/{player_id}/restrictions", response_model=list[CardRestrictionRead])

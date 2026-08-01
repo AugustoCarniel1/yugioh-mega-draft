@@ -9,8 +9,8 @@ import streamlit.components.v1 as components
 API_URL = "http://127.0.0.1:8000"
 
 
-def api_get(path: str):
-    response = requests.get(f"{API_URL}{path}", timeout=30)
+def api_get(path: str, **kwargs):
+    response = requests.get(f"{API_URL}{path}", timeout=30, **kwargs)
     response.raise_for_status()
     return response.json()
 
@@ -360,6 +360,8 @@ top_cols[3].metric("Gold/Rodada", f"{current_round_gold_gain}g")
 
 if year_pick.get("pending"):
     st.warning(f"Pick anual de {year_pick['year']} pendente antes da loja.")
+if player.get("boss_pick_pending"):
+    st.info("Escolha seu boss monster inicial para liberar o perfil completo.")
 
 actions = st.columns([2, 2, 6])
 if inventory:
@@ -433,6 +435,62 @@ def render_card_image(card: dict) -> None:
         """,
         unsafe_allow_html=True,
     )
+
+
+@st.dialog("Escolher Boss Monster")
+def render_boss_pick_dialog(player_id: int, available_years: list[int]) -> None:
+    st.caption("Escolha 1 monstro de qualquer carta do jogo. Esse pick acontece uma unica vez por perfil.")
+    start_year = st.selectbox(
+        "Ano inicial da run",
+        available_years,
+        index=0,
+        key=f"boss-start-year-{player_id}",
+        help="A run comeca ja na primeira colecao desse ano.",
+    )
+    query = st.text_input("Buscar monstro", key=f"boss-search-{player_id}", placeholder="Ex.: Blue-Eyes, Chaos, Stardust...")
+    if not query.strip():
+        st.info("Digite o nome de um monstro para buscar.")
+        return
+
+    try:
+        results = api_get(f"/players/{player_id}/card-search", params={"q": query.strip(), "monster_only": "true"})
+    except requests.HTTPError as exc:
+        st.error(error_message(exc))
+        return
+
+    if not results:
+        st.warning("Nenhum monstro encontrado.")
+        return
+
+    columns_per_row = 5
+    for start in range(0, len(results), columns_per_row):
+        row = st.columns(columns_per_row)
+        for column, card in zip(row, results[start:start + columns_per_row]):
+            with column:
+                if card.get("image_url"):
+                    st.image(f"{API_URL}{card['image_url']}", use_container_width=True)
+                st.caption(card["name"])
+                if st.button("Escolher", key=f"boss-pick-{player_id}-{card['card_id']}"):
+                    try:
+                        api_post(
+                            f"/players/{player_id}/boss-pick",
+                            json={"card_id": card["card_id"], "start_year": int(start_year)},
+                        )
+                        st.success(f"{card['name']} entrou no seu deck inicial. Run iniciada em {start_year}.")
+                        st.rerun()
+                    except requests.HTTPError as exc:
+                        st.error(error_message(exc))
+
+
+available_start_years = sorted(
+    {
+        year
+        for year in (collection_year_from_item(item) for item in collections)
+        if year is not None
+    }
+)
+if player.get("boss_pick_pending"):
+    render_boss_pick_dialog(player["id"], available_start_years)
 
 
 def restriction_icon(status: str | None) -> str:
@@ -766,6 +824,10 @@ def render_year_pick_tab(player_id: int, year_pick: dict) -> None:
                 const claimed = Number((data.claims || {})[bucket] || 0);
                 const quota = Number((data.quotas || {})[bucket] || 2);
                 if (claimed >= quota) collapsedBuckets[bucket] = true;
+              }
+              if (!data.year || !data.cards.length) {
+                try { window.parent.location.reload(); } catch (err) {}
+                return;
               }
               markEditorDirty();
               render();

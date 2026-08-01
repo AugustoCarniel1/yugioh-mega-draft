@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.data.core_boosters import CORE_BOOSTERS
 from app.models import CardRestriction, CollectionProgress, DeckCard, InventoryItem, Player
 from app.services.deck import card_copies_in_deck, trim_card_from_deck
 from app.services.pricing import sell_price_for_rarity
@@ -23,13 +24,83 @@ def create_player(session: Session, name: str) -> Player:
     if existing_player:
         raise ValueError("Ja existe um jogador com esse nome.")
 
-    player = Player(name=clean_name)
+    player = Player(name=clean_name, boss_pick_pending=True)
     session.add(player)
     try:
         session.commit()
     except IntegrityError as exc:
         session.rollback()
         raise ValueError("Ja existe um jogador com esse nome.") from exc
+    session.refresh(player)
+    return player
+
+
+def first_collection_position_for_year(session: Session, start_year: int) -> int | None:
+    collection = session.execute(
+        select(CollectionProgress)
+        .where(CollectionProgress.tcg_date == str(start_year))
+        .order_by(CollectionProgress.position)
+    ).scalars().first()
+    if collection:
+        return collection.position
+
+    positions = [item["position"] for item in CORE_BOOSTERS if item.get("year") == start_year]
+    return min(positions) if positions else None
+
+
+def claim_boss_pick(session: Session, player_id: int, card_id: int, start_year: int) -> Player:
+    player = session.get(Player, player_id)
+    if not player:
+        raise ValueError("Jogador nao encontrado.")
+    if not player.boss_pick_pending:
+        raise ValueError("O boss monster inicial ja foi escolhido.")
+
+    first_position = first_collection_position_for_year(session, start_year)
+    if first_position is None:
+        raise ValueError("Ano inicial invalido para a run.")
+
+    card = get_or_fetch_card(session, card_id)
+    if "Monster" not in (card.type or ""):
+        raise ValueError("Escolha apenas monstros para o boss inicial.")
+
+    item = session.execute(
+        select(InventoryItem).where(
+            InventoryItem.player_id == player_id,
+            InventoryItem.card_id == card_id,
+        )
+    ).scalar_one_or_none()
+    if item:
+        item.quantity += 1
+    else:
+        item = InventoryItem(
+            player_id=player_id,
+            card_id=card_id,
+            quantity=1,
+            rarity=best_card_rarity(card),
+            source="boss_pick",
+        )
+
+    zone = "extra" if any(extra_type in (card.type or "") for extra_type in ("Fusion", "Synchro", "Xyz", "Link")) else "main"
+    deck_card = session.execute(
+        select(DeckCard).where(
+            DeckCard.player_id == player_id,
+            DeckCard.card_id == card_id,
+            DeckCard.zone == zone,
+        )
+    ).scalar_one_or_none()
+    if deck_card:
+        deck_card.quantity += 1
+    else:
+        deck_card = DeckCard(player_id=player_id, card_id=card_id, zone=zone, quantity=1)
+
+    player.boss_pick_pending = False
+    player.current_collection_index = first_position - 1
+    player.pending_year_pick_year = None
+    player.year_pick_claims = {}
+    session.add(item)
+    session.add(deck_card)
+    session.add(player)
+    session.commit()
     session.refresh(player)
     return player
 

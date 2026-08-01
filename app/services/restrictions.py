@@ -10,20 +10,15 @@ BANNED = "banned"
 MAX_THREE_COPY_EXCEPTIONS = 2
 
 
-def search_cards_by_name(session: Session, query: str, limit: int = 20) -> list[Card]:
+def search_cards_by_name(session: Session, query: str, limit: int = 20, monster_only: bool = False) -> list[Card]:
     query = query.strip()
     if not query:
         return []
 
-    cards_by_id = {
-        card.id: card
-        for card in session.execute(
-            select(Card)
-            .where(Card.name.ilike(f"%{query}%"))
-            .order_by(Card.name)
-            .limit(limit)
-        ).scalars()
-    }
+    statement = select(Card).where(Card.name.ilike(f"%{query}%"))
+    if monster_only:
+        statement = statement.where(Card.type.ilike("%Monster%"))
+    cards_by_id = {card.id: card for card in session.execute(statement.order_by(Card.name).limit(limit)).scalars()}
 
     try:
         payloads = fetch_card_payloads_by_name(query, limit=limit)
@@ -31,6 +26,8 @@ def search_cards_by_name(session: Session, query: str, limit: int = 20) -> list[
         payloads = []
 
     for payload in payloads:
+        if monster_only and "Monster" not in (payload.get("type") or ""):
+            continue
         if payload["id"] not in cards_by_id:
             cards_by_id[payload["id"]] = get_or_fetch_card(session, payload["id"])
         if len(cards_by_id) >= limit:

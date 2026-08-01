@@ -1,5 +1,6 @@
 import requests
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.data.core_boosters import CORE_BOOSTERS
@@ -119,6 +120,9 @@ def pending_year_pick(session: Session, player_id: int) -> dict:
             continue
 
         for payload in payloads:
+            if payload["id"] in cards_by_id:
+                continue
+
             card = session.get(Card, payload["id"])
             if not card:
                 card = Card(
@@ -132,11 +136,13 @@ def pending_year_pick(session: Session, player_id: int) -> dict:
                     card_sets=payload.get("card_sets", []),
                 )
                 session.add(card)
-                session.commit()
-                session.refresh(card)
-
-            if card.id in cards_by_id:
-                continue
+                try:
+                    session.flush()
+                except IntegrityError:
+                    session.rollback()
+                    card = session.get(Card, payload["id"])
+                    if not card:
+                        raise
 
             rarity = "Common"
             for card_set in payload.get("card_sets", []):

@@ -19,6 +19,7 @@ def init_db_with_sqlite() -> None:
                 name VARCHAR NOT NULL UNIQUE,
                 gold REAL NOT NULL DEFAULT 0,
                 current_collection_index INTEGER NOT NULL DEFAULT -1,
+                boss_pick_pending BOOLEAN DEFAULT 0,
                 pending_year_pick_year INTEGER,
                 year_pick_claims JSON DEFAULT '{}',
                 created_at DATETIME NOT NULL
@@ -90,21 +91,25 @@ def init_db_with_sqlite() -> None:
                     name VARCHAR NOT NULL UNIQUE,
                     gold REAL NOT NULL DEFAULT 0,
                     current_collection_index INTEGER NOT NULL DEFAULT -1,
+                    boss_pick_pending BOOLEAN DEFAULT 0,
                     pending_year_pick_year INTEGER,
                     year_pick_claims JSON DEFAULT '{}',
                     created_at DATETIME NOT NULL
                 );
-                INSERT INTO player (id, name, gold, current_collection_index, pending_year_pick_year, year_pick_claims, created_at)
-                SELECT id, name, gold, current_collection_index, NULL, '{}', created_at FROM player_old;
+                INSERT INTO player (id, name, gold, current_collection_index, boss_pick_pending, pending_year_pick_year, year_pick_claims, created_at)
+                SELECT id, name, gold, current_collection_index, 0, NULL, '{}', created_at FROM player_old;
                 DROP TABLE player_old;
                 CREATE INDEX IF NOT EXISTS ix_player_name ON player (name);
                 """
             )
         player_columns = {column[1] for column in connection.execute("PRAGMA table_info(player)").fetchall()}
+        if "boss_pick_pending" not in player_columns:
+            connection.execute("ALTER TABLE player ADD COLUMN boss_pick_pending BOOLEAN DEFAULT 0")
         if "pending_year_pick_year" not in player_columns:
             connection.execute("ALTER TABLE player ADD COLUMN pending_year_pick_year INTEGER")
         if "year_pick_claims" not in player_columns:
             connection.execute("ALTER TABLE player ADD COLUMN year_pick_claims JSON DEFAULT '{}'")
+        connection.execute("UPDATE player SET boss_pick_pending = 0 WHERE boss_pick_pending IS NULL")
         connection.execute(
             "UPDATE player SET year_pick_claims = '{}' WHERE year_pick_claims IS NULL OR TRIM(year_pick_claims) = ''"
         )
