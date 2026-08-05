@@ -137,6 +137,100 @@ st.set_page_config(page_title="Yu-Gi-Oh! Mega Draft", layout="wide")
 st.markdown(
     """
     <style>
+    header[data-testid="stHeader"] {
+        display: none !important;
+    }
+
+    div[data-testid="stToolbar"] {
+        display: none !important;
+    }
+
+    section[data-testid="stSidebar"] {
+        min-width: 180px !important;
+        max-width: 180px !important;
+    }
+
+    section[data-testid="stSidebar"] .stHeading,
+    section[data-testid="stSidebar"] label,
+    section[data-testid="stSidebar"] .stMarkdown,
+    section[data-testid="stSidebar"] .stCaption {
+        font-size: 0.72rem !important;
+    }
+
+    section[data-testid="stSidebar"] h2,
+    section[data-testid="stSidebar"] .stHeading h2 {
+        font-size: 0.9rem !important;
+        margin-bottom: 0.2rem !important;
+    }
+
+    section[data-testid="stSidebar"] .stButton button,
+    section[data-testid="stSidebar"] .stSelectbox label,
+    section[data-testid="stSidebar"] .stTextInput label {
+        font-size: 0.72rem !important;
+    }
+
+    section[data-testid="stSidebar"] .stButton button {
+        min-height: 1.7rem !important;
+        padding: 0.05rem 0.4rem !important;
+        font-size: 0.72rem !important;
+    }
+
+    section[data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] > div,
+    section[data-testid="stSidebar"] .stTextInput input {
+        min-height: 2rem !important;
+        font-size: 0.72rem !important;
+        padding-top: 0.15rem !important;
+        padding-bottom: 0.15rem !important;
+    }
+
+    section[data-testid="stSidebar"] .block-container {
+        padding: 0.7rem 0.55rem 0.85rem !important;
+    }
+
+    section[data-testid="stSidebar"] .stDivider {
+        margin: 0.7rem 0 !important;
+    }
+
+    section[data-testid="stSidebar"] .stExpander {
+        font-size: 0.72rem !important;
+    }
+
+    .block-container {
+        padding-top: 1.2rem !important;
+    }
+
+    h1 {
+        font-size: 2.25rem !important;
+        line-height: 1.05 !important;
+        margin-bottom: 0.35rem !important;
+        padding-top: 0 !important;
+    }
+
+    div[data-testid="stMetric"] {
+        padding: 0 !important;
+    }
+
+    div[data-testid="stMetric"] label {
+        font-size: 0.82rem !important;
+    }
+
+    div[data-testid="stMetricValue"] {
+        font-size: 1.1rem !important;
+        line-height: 1.1 !important;
+    }
+
+    div[data-testid="stMetricDelta"] {
+        font-size: 0.72rem !important;
+    }
+
+    div[data-testid="stFileUploader"] {
+        margin-top: 0.1rem !important;
+    }
+
+    div[data-testid="stButton"] button {
+        min-height: 2.2rem;
+    }
+
     div[data-testid="stHorizontalBlock"] {
         overflow: visible;
     }
@@ -352,7 +446,7 @@ except requests.HTTPError as exc:
     st.error(f"Erro ao carregar pick anual: {error_message(exc)}")
     st.stop()
 
-top_cols = st.columns([2, 2, 3, 2])
+top_cols = st.columns([1.5, 1.2, 2.8, 1.3], vertical_alignment="top")
 with top_cols[0]:
     render_gold_metric(player["id"], player["gold"])
 top_cols[1].metric("Rodada", round_label)
@@ -364,7 +458,7 @@ if year_pick.get("pending"):
 if player.get("boss_pick_pending"):
     st.info("Escolha seu boss monster inicial para liberar o perfil completo.")
 
-actions = st.columns([2, 2, 6])
+actions = st.columns([1.8, 1.8, 6.4], vertical_alignment="bottom")
 if starter_imported:
     actions[0].caption("Starter Deck ja importado.")
 else:
@@ -673,18 +767,15 @@ def render_year_pick_tab(player_id: int, year_pick: dict) -> None:
         border-radius: 8px;
         box-shadow: 0 18px 42px rgba(0,0,0,0.45);
         display: none;
-        left: 50%;
-        max-height: calc(100vh - 28px);
-        padding: 8px;
+        max-height: calc(100vh - 24px);
+        padding: 6px;
         pointer-events: none;
         position: fixed;
-        top: 14px;
-        transform: translateX(-50%);
-        width: min(520px, 38vw);
+        width: min(340px, 26vw);
         z-index: 9999;
       }
-      .pick-hover-preview img { border-radius:5px; display:block; max-height:calc(100vh - 72px); object-fit:contain; width:100%; }
-      .pick-hover-preview-title { color:#e5e7eb; font-size:12px; font-weight:700; line-height:1.2; margin-top:6px; }
+      .pick-hover-preview img { border-radius:4px; display:block; max-height:calc(100vh - 36px); object-fit:contain; width:100%; }
+      .pick-hover-preview-title { display:none; }
       .toast { display:none; margin-bottom:10px; padding:8px; border-radius:6px; background:#450a0a; border:1px solid #fca5a5; color:#fee2e2; font-size:13px; }
       @media (max-width: 1400px) { .pick-grid { grid-template-columns:repeat(10,minmax(0,1fr)); } }
       @media (max-width: 1180px) { .pick-grid { grid-template-columns:repeat(8,minmax(0,1fr)); } }
@@ -706,6 +797,21 @@ def render_year_pick_tab(player_id: int, year_pick: dict) -> None:
       };
       let currentFilter = "";
       let collapsedBuckets = {};
+      function positionPreview(preview, item){
+        const rect = item.getBoundingClientRect();
+        const previewWidth = preview.offsetWidth || 340;
+        const previewHeight = preview.offsetHeight || Math.floor(previewWidth * 1.46);
+        const gutter = 12;
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+        let left = rect.right + gutter;
+        if (left + previewWidth > viewportWidth - 8) left = rect.left - previewWidth - gutter;
+        if (left < 8) left = Math.max(8, Math.min(viewportWidth - previewWidth - 8, rect.left + gutter));
+        let top = rect.top + (rect.height / 2) - (previewHeight / 2);
+        top = Math.max(8, Math.min(top, viewportHeight - previewHeight - 8));
+        preview.style.left = `${left}px`;
+        preview.style.top = `${top}px`;
+      }
       function esc(v){return String(v??"").replace(/[&<>\"']/g,c=>({\"&\":\"&amp;\",\"<\":\"&lt;\",\">\":\"&gt;\",'\"':\"&quot;\",\"'\":\"&#39;\"}[c]));}
       function showError(msg){const t=document.querySelector(".toast"); t.textContent=msg; t.style.background="#450a0a"; t.style.borderColor="#fca5a5"; t.style.color="#fee2e2"; t.style.display="block"; setTimeout(()=>t.style.display="none",3000);}
       function showSuccess(msg){const t=document.querySelector(".toast"); t.textContent=msg; t.style.background="#064e3b"; t.style.borderColor="#34d399"; t.style.color="#d1fae5"; t.style.display="block"; setTimeout(()=>t.style.display="none",2200);}
@@ -807,8 +913,13 @@ def render_year_pick_tab(player_id: int, year_pick: dict) -> None:
             if (!image || !preview) return;
             preview.querySelector("img").src = image.src;
             preview.querySelector("img").alt = image.alt;
-            preview.querySelector(".pick-hover-preview-title").textContent = image.alt;
             preview.style.display = "block";
+            positionPreview(preview, cardEl);
+          });
+          cardEl.addEventListener("mousemove", () => {
+            const preview = document.querySelector(".pick-hover-preview");
+            if (!preview || preview.style.display !== "block") return;
+            positionPreview(preview, cardEl);
           });
           cardEl.addEventListener("mouseleave", () => {
             const preview = document.querySelector(".pick-hover-preview");
@@ -847,15 +958,26 @@ def render_year_pick_tab(player_id: int, year_pick: dict) -> None:
 
 def editor_card_payload(card: dict) -> dict:
     card_type = card.get("type") or ""
-    is_extra_deck = any(extra_type in card_type for extra_type in ("Fusion", "Synchro", "Xyz", "Link"))
-    if "Spell" in card_type:
-        sort_category = 1
-    elif "Trap" in card_type:
-        sort_category = 2
-    elif is_extra_deck:
-        sort_category = 3
-    else:
+    if "Normal" in card_type and "Monster" in card_type:
         sort_category = 0
+    elif "Effect" in card_type and "Monster" in card_type and "Ritual" not in card_type:
+        sort_category = 1
+    elif "Ritual" in card_type:
+        sort_category = 2
+    elif "Spell" in card_type:
+        sort_category = 3
+    elif "Trap" in card_type:
+        sort_category = 4
+    elif "Fusion" in card_type:
+        sort_category = 5
+    elif "Synchro" in card_type:
+        sort_category = 6
+    elif "Xyz" in card_type:
+        sort_category = 7
+    elif "Link" in card_type:
+        sort_category = 8
+    else:
+        sort_category = 9
     return {
         "card_id": card["card_id"],
         "deck_id": card.get("deck_id"),
@@ -873,15 +995,26 @@ def editor_card_payload(card: dict) -> dict:
 
 def card_type_sort_key(card: dict) -> tuple[int, str]:
     card_type = card.get("type") or ""
-    is_extra_deck = any(extra_type in card_type for extra_type in ("Fusion", "Synchro", "Xyz", "Link"))
-    if "Spell" in card_type:
-        category = 1
-    elif "Trap" in card_type:
-        category = 2
-    elif is_extra_deck:
-        category = 3
-    else:
+    if "Normal" in card_type and "Monster" in card_type:
         category = 0
+    elif "Effect" in card_type and "Monster" in card_type and "Ritual" not in card_type:
+        category = 1
+    elif "Ritual" in card_type:
+        category = 2
+    elif "Spell" in card_type:
+        category = 3
+    elif "Trap" in card_type:
+        category = 4
+    elif "Fusion" in card_type:
+        category = 5
+    elif "Synchro" in card_type:
+        category = 6
+    elif "Xyz" in card_type:
+        category = 7
+    elif "Link" in card_type:
+        category = 8
+    else:
+        category = 9
     return category, card["name"]
 
 
@@ -921,70 +1054,85 @@ def render_deck_editor_component(player_id: int, deck_data: dict, inventory_card
         font-family: "Inter", "Segoe UI", Arial, sans-serif;
         margin: 0;
       }
+      :root {
+        --binder-target-height: 930px;
+      }
       .editor-shell {
         display: grid;
-        gap: 14px;
-        grid-template-columns: minmax(720px, 1.55fr) minmax(440px, 0.95fr);
-        min-height: 1040px;
+        gap: 10px;
+        grid-template-columns: minmax(860px, 1.95fr) minmax(330px, 0.78fr);
+        min-height: 760px;
       }
       .deck-stack, .binder-panel {
         background:
-          radial-gradient(circle at top left, rgba(37, 99, 235, 0.24), transparent 36%),
-          linear-gradient(135deg, #0b1020 0%, #151a2e 58%, #111827 100%);
-        border: 1px solid rgba(148, 163, 184, 0.65);
-        border-radius: 8px;
-        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+          radial-gradient(circle at top left, rgba(59, 130, 246, 0.14), transparent 34%),
+          linear-gradient(180deg, #0a1122 0%, #121a31 100%);
+        border: 1px solid rgba(96, 165, 250, 0.26);
+        border-radius: 10px;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
         overflow: hidden;
       }
-      .zone {
-        border-bottom: 1px solid rgba(148, 163, 184, 0.45);
-        padding: 8px;
+      .deck-stack {
+        display: grid;
+        gap: 6px;
+        grid-template-columns: 1fr;
+        padding: 6px;
       }
-      .zone:last-child { border-bottom: 0; }
+      .zone {
+        border: 1px solid rgba(96, 165, 250, 0.18);
+        border-radius: 6px;
+        padding: 0;
+        overflow: hidden;
+      }
       .zone-header {
         align-items: center;
-        background: linear-gradient(90deg, #050816 0%, #111827 42%, rgba(30, 64, 175, 0.5) 100%);
-        border: 1px solid rgba(148, 163, 184, 0.55);
-        border-radius: 5px 5px 0 0;
+        background: linear-gradient(90deg, #162246 0%, #1c2952 58%, #23386c 100%);
+        border-bottom: 1px solid rgba(147, 197, 253, 0.22);
         display: flex;
-        gap: 12px;
-        height: 26px;
-        padding: 0 12px;
+        gap: 8px;
+        height: 30px;
+        padding: 0 10px;
       }
       .zone-title {
-        font-size: 16px;
+        font-size: 10px;
         font-weight: 800;
-        letter-spacing: 0.04em;
-        min-width: 78px;
+        letter-spacing: 0.14em;
+        min-width: 52px;
         text-transform: uppercase;
       }
       .zone-count {
-        background: rgba(255, 255, 255, 0.15);
-        font-size: 16px;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 4px;
+        font-size: 10px;
         font-weight: 700;
-        min-width: 48px;
+        min-width: 26px;
+        padding: 0 7px;
         text-align: center;
       }
       .zone-status {
-        color: #cbd5e1;
-        font-size: 12px;
+        color: #dbeafe;
+        font-size: 9px;
+        letter-spacing: 0.08em;
         margin-left: auto;
+        text-transform: uppercase;
       }
       .zone-cards {
         align-content: start;
-        background: rgba(15, 23, 42, 0.74);
-        border: 1px solid rgba(96, 165, 250, 0.32);
-        border-top: 0;
+        background:
+          linear-gradient(180deg, rgba(14, 20, 39, 0.98) 0%, rgba(17, 24, 39, 0.96) 100%);
         display: grid;
-        gap: 8px;
-        grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
-        overflow-y: auto;
-        padding: 10px;
+        gap: 1px;
+        overflow: hidden;
+        padding: 6px 8px 8px;
       }
-      .zone-main .zone-cards { height: 520px; }
+      .zone-main .zone-cards {
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+        min-height: 0;
+      }
       .zone-extra .zone-cards, .zone-side .zone-cards {
-        grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
-        height: 178px;
+        grid-template-columns: repeat(15, minmax(0, 1fr));
+        min-height: 96px;
       }
       .drop-active {
         outline: 2px solid #38bdf8;
@@ -1003,6 +1151,17 @@ def render_deck_editor_component(player_id: int, deck_data: dict, inventory_card
       .card-img:active { cursor: grabbing; }
       .deck-card {
         position: relative;
+        transform: translateZ(0);
+      }
+      .zone-main .deck-card {
+        justify-self: stretch;
+        max-width: none;
+        width: 100%;
+      }
+      .zone-extra .deck-card, .zone-side .deck-card {
+        justify-self: stretch;
+        max-width: none;
+        width: 100%;
       }
       .deck-card:hover .card-img, .binder-card:hover .card-img {
         box-shadow: 0 0 0 2px #38bdf8, 0 8px 20px rgba(0,0,0,0.38);
@@ -1013,53 +1172,51 @@ def render_deck_editor_component(player_id: int, deck_data: dict, inventory_card
         border-radius: 8px;
         box-shadow: 0 18px 42px rgba(0,0,0,0.45);
         display: none;
-        padding: 8px;
+        padding: 6px;
         pointer-events: none;
         position: fixed;
-        left: 50%;
-        max-height: calc(100vh - 28px);
-        top: 14px;
-        transform: translateX(-50%);
-        width: min(520px, 38vw);
+        max-height: calc(100vh - 24px);
+        width: min(340px, 26vw);
         z-index: 9999;
       }
       .hover-preview img {
-        border-radius: 5px;
+        border-radius: 4px;
         display: block;
-        max-height: calc(100vh - 72px);
+        max-height: calc(100vh - 36px);
         object-fit: contain;
         width: 100%;
       }
       .hover-preview-title {
-        color: #e5e7eb;
-        font-size: 12px;
-        font-weight: 700;
-        line-height: 1.2;
-        margin-top: 6px;
+        display: none;
       }
       .binder-panel {
+        align-self: start;
         display: flex;
         flex-direction: column;
-        min-height: 1040px;
-        padding: 10px;
+        height: var(--binder-target-height);
+        max-height: var(--binder-target-height);
+        min-height: 0;
+        overflow: hidden;
+        padding: 8px;
       }
       .binder-tools {
         display: grid;
         gap: 8px;
         grid-template-columns: 1fr;
-        margin-bottom: 10px;
+        margin-bottom: 8px;
       }
       .binder-title {
         align-items: center;
         display: flex;
-        font-size: 16px;
+        font-size: 11px;
         font-weight: 800;
         justify-content: space-between;
+        letter-spacing: 0.12em;
         text-transform: uppercase;
       }
       .binder-title span {
         color: #93c5fd;
-        font-size: 12px;
+        font-size: 8px;
         font-weight: 600;
         text-transform: none;
       }
@@ -1069,15 +1226,15 @@ def render_deck_editor_component(player_id: int, deck_data: dict, inventory_card
         margin-bottom: 2px;
       }
       .binder-action {
-        background: #0f172a;
-        border: 1px solid rgba(148, 163, 184, 0.7);
-        border-radius: 5px;
+        background: linear-gradient(180deg, #0f1831 0%, #0a1121 100%);
+        border: 1px solid rgba(147, 197, 253, 0.35);
+        border-radius: 4px;
         color: #e5e7eb;
         cursor: pointer;
-        font-size: 12px;
+        font-size: 10px;
         font-weight: 700;
-        height: 32px;
-        padding: 0 10px;
+        height: 28px;
+        padding: 0 9px;
       }
       .binder-action:hover {
         border-color: rgba(96, 165, 250, 0.9);
@@ -1086,8 +1243,8 @@ def render_deck_editor_component(player_id: int, deck_data: dict, inventory_card
         align-items: center;
         color: #cbd5e1;
         display: flex;
-        font-size: 12px;
-        gap: 8px;
+        font-size: 10px;
+        gap: 6px;
         justify-content: space-between;
       }
       .pager-buttons {
@@ -1095,51 +1252,51 @@ def render_deck_editor_component(player_id: int, deck_data: dict, inventory_card
         gap: 6px;
       }
       .pager-button {
-        background: #0f172a;
-        border: 1px solid rgba(148, 163, 184, 0.7);
+        background: #0b1224;
+        border: 1px solid rgba(148, 163, 184, 0.45);
         border-radius: 4px;
         color: #e5e7eb;
         cursor: pointer;
         height: 26px;
-        min-width: 34px;
+        min-width: 26px;
       }
       .pager-button:disabled {
         cursor: default;
         opacity: 0.42;
       }
       .binder-search {
-        background: #020617;
-        border: 1px solid rgba(148, 163, 184, 0.7);
-        border-radius: 5px;
+        background: rgba(2, 6, 23, 0.88);
+        border: 1px solid rgba(148, 163, 184, 0.46);
+        border-radius: 4px;
         color: #e5e7eb;
-        height: 34px;
-        padding: 0 10px;
+        height: 30px;
+        padding: 0 9px;
         width: 100%;
       }
-      .remove-bin {
-        align-items: center;
-        background: rgba(127, 29, 29, 0.52);
-        border: 1px dashed rgba(252, 165, 165, 0.9);
-        border-radius: 6px;
-        color: #fecaca;
-        display: flex;
-        font-size: 13px;
-        font-weight: 700;
-        height: 42px;
-        justify-content: center;
+      .binder-filter {
+        background: rgba(2, 6, 23, 0.88);
+        border: 1px solid rgba(148, 163, 184, 0.46);
+        border-radius: 4px;
+        color: #e5e7eb;
+        height: 30px;
+        padding: 0 9px;
+        width: 100%;
       }
       .binder-grid {
         align-content: start;
         display: grid;
         flex: 1;
-        gap: 9px;
-        grid-template-columns: repeat(auto-fill, minmax(86px, 1fr));
-        overflow-y: auto;
-        padding-right: 4px;
+        gap: 6px 6px;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        justify-items: stretch;
+        padding: 2px 0 0;
       }
       .binder-card {
+        justify-self: stretch;
+        max-width: none;
         min-width: 0;
         position: relative;
+        width: 100%;
       }
       .binder-card.disabled {
         cursor: not-allowed;
@@ -1165,7 +1322,7 @@ def render_deck_editor_component(player_id: int, deck_data: dict, inventory_card
         border: 1px solid rgba(255,255,255,0.35);
         border-radius: 999px;
         color: #f8fafc;
-        font-size: 11px;
+        font-size: 10px;
         font-weight: 800;
         min-width: 22px;
         padding: 1px 5px;
@@ -1178,10 +1335,10 @@ def render_deck_editor_component(player_id: int, deck_data: dict, inventory_card
         align-items: center;
         color: #64748b;
         display: flex;
-        font-size: 13px;
+        font-size: 11px;
         grid-column: 1 / -1;
         justify-content: center;
-        min-height: 84px;
+        min-height: 90px;
       }
       .toast {
         background: #450a0a;
@@ -1193,12 +1350,47 @@ def render_deck_editor_component(player_id: int, deck_data: dict, inventory_card
         margin-bottom: 8px;
         padding: 8px;
       }
+      @media (max-width: 1440px) {
+        :root {
+          --binder-target-height: 590px;
+        }
+        .editor-shell {
+          grid-template-columns: minmax(760px, 1.8fr) minmax(300px, 0.82fr);
+        }
+        .zone-main .zone-cards {
+          grid-template-columns: repeat(11, minmax(0, 1fr));
+        }
+      }
+      @media (max-width: 1180px) {
+        :root {
+          --binder-target-height: auto;
+        }
+        .editor-shell {
+          grid-template-columns: 1fr;
+        }
+        .deck-stack,
+        .binder-panel {
+          min-height: auto;
+        }
+        .binder-panel {
+          max-height: none;
+        }
+        .zone-main .zone-cards {
+          grid-template-columns: repeat(10, minmax(0, 1fr));
+        }
+        .zone-extra .zone-cards, .zone-side .zone-cards {
+          grid-template-columns: repeat(10, minmax(0, 1fr));
+        }
+        .binder-grid {
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+        }
+      }
     </style>
     <script>
       let data = __PAYLOAD__;
       let currentFilter = "";
+      let currentBinderFilterMode = "all";
       let currentPage = 0;
-      const pageSize = 32;
       const root = document.getElementById("deck-editor-root");
       let lastRefreshAt = 0;
       const DIRTY_FLAG_KEY = "ygo_editor_dirty";
@@ -1238,10 +1430,16 @@ def render_deck_editor_component(player_id: int, deck_data: dict, inventory_card
 
       function sortCategory(cardType) {
         const type = cardType || "";
-        if (type.includes("Spell")) return 1;
-        if (type.includes("Trap")) return 2;
-        if (["Fusion", "Synchro", "Xyz", "Link"].some((extraType) => type.includes(extraType))) return 3;
-        return 0;
+        if (type.includes("Normal") && type.includes("Monster")) return 0;
+        if (type.includes("Effect") && type.includes("Monster") && !type.includes("Ritual")) return 1;
+        if (type.includes("Ritual")) return 2;
+        if (type.includes("Spell")) return 3;
+        if (type.includes("Trap")) return 4;
+        if (type.includes("Fusion")) return 5;
+        if (type.includes("Synchro")) return 6;
+        if (type.includes("Xyz")) return 7;
+        if (type.includes("Link")) return 8;
+        return 9;
       }
 
       function normalizeInventoryCard(card) {
@@ -1356,9 +1554,15 @@ def render_deck_editor_component(player_id: int, deck_data: dict, inventory_card
         setTimeout(() => { toast.style.display = "none"; }, 2500);
       }
 
-      function deckCardHtml(card) {
+      function markEditorDirty() {
+        try {
+          window.localStorage.setItem(DIRTY_FLAG_KEY, "1");
+        } catch (err) {}
+      }
+
+      function deckCardHtml(card, zone) {
         return `
-          <div class="deck-card" draggable="true" data-kind="deck" data-card-id="${card.card_id}" data-deck-id="${card.deck_id}" title="${esc(card.name)}">
+          <div class="deck-card" draggable="true" data-kind="deck" data-card-id="${card.card_id}" data-deck-id="${card.deck_id}" data-zone="${zone}" title="${esc(card.name)}">
             <img class="card-img" src="${esc(card.image_url)}" alt="${esc(card.name)}">
           </div>
         `;
@@ -1366,7 +1570,7 @@ def render_deck_editor_component(player_id: int, deck_data: dict, inventory_card
 
       function zoneHtml(zone, title, count, valid, limit) {
         const cards = data.deck[zone];
-        const cardHtml = cards.length ? cards.map(deckCardHtml).join("") : `<div class="empty-zone">Arraste cartas para ${title}</div>`;
+        const cardHtml = cards.length ? cards.map((card) => deckCardHtml(card, zone)).join("") : `<div class="empty-zone">Arraste cartas para ${title}</div>`;
         return `
           <section class="zone zone-${zone}">
             <div class="zone-header">
@@ -1394,10 +1598,49 @@ def render_deck_editor_component(player_id: int, deck_data: dict, inventory_card
         `;
       }
 
+      function passesBinderFilter(card) {
+        if (currentBinderFilterMode === "not_in_deck") {
+          return Number(card.available_quantity || 0) === Number(card.quantity || 0);
+        }
+        if (currentBinderFilterMode === "spare") {
+          return Number(card.available_quantity || 0) > 0 && Number(card.available_quantity || 0) < Number(card.quantity || 0);
+        }
+        return true;
+      }
+
+      function binderColumnCount() {
+        const viewportWidth = Math.max(window.innerWidth || 0, document.documentElement?.clientWidth || 0, 1280);
+        if (viewportWidth <= 1180) return 5;
+        return 5;
+      }
+
+      function binderPageSize() {
+        const viewportWidth = Math.max(window.innerWidth || 0, document.documentElement?.clientWidth || 0, 1280);
+        const columns = binderColumnCount();
+        const minimumCards = viewportWidth <= 1180 ? 20 : 30;
+        const shellGap = viewportWidth <= 1180 ? 0 : 10;
+        const editorWidth = Math.max(960, viewportWidth - 120);
+        const binderWidth = viewportWidth <= 1180
+          ? editorWidth - 16
+          : Math.max(330, Math.round((editorWidth - shellGap) * 0.285));
+        const horizontalPadding = 16;
+        const columnGap = 6;
+        const cardWidth = Math.floor((binderWidth - horizontalPadding - (columnGap * (columns - 1))) / columns);
+        const cardHeight = Math.floor(cardWidth * (614 / 421));
+        const targetZoneHeight = viewportWidth <= 1180 ? 620 : (viewportWidth <= 1440 ? 590 : 610);
+        const toolArea = viewportWidth <= 1180 ? 150 : 132;
+        const availableHeight = Math.max(150, targetZoneHeight - toolArea);
+        const rowHeight = cardHeight + 6;
+        const rows = Math.max(3, Math.floor(availableHeight / rowHeight));
+        return Math.max(columns * rows, minimumCards);
+      }
+
       function render(filter = "") {
         currentFilter = filter;
         const needle = filter.trim().toLowerCase();
+        const pageSize = binderPageSize();
         const inventory = data.inventory
+          .filter((card) => passesBinderFilter(card))
           .filter((card) =>
             !needle || card.name.toLowerCase().includes(needle) ||
             card.type.toLowerCase().includes(needle) ||
@@ -1425,25 +1668,29 @@ def render_deck_editor_component(player_id: int, deck_data: dict, inventory_card
             </div>
             <aside class="binder-panel">
               <div class="toast"></div>
-              <div class="binder-tools">
-               <div class="binder-title">Colecao <span>arraste para o deck</span></div>
-                <div class="binder-actions">
-                  <button class="binder-action" data-export-ydke="true">Copiar .ydke</button>
-                </div>
-                <input class="binder-search" value="${esc(filter)}" placeholder="Buscar carta, tipo ou raridade">
-                <div class="binder-pager">
-                  <span>${inventory.length ? pageStart + 1 : 0}-${Math.min(pageStart + pageSize, inventory.length)} de ${inventory.length} cartas</span>
+               <div class="binder-tools">
+                <div class="binder-title">Colecao <span>arraste para o deck ou solte aqui para remover</span></div>
+                 <div class="binder-actions">
+                   <button class="binder-action" data-export-ydke="true">Copiar .ydke</button>
+                 </div>
+                 <input class="binder-search" value="${esc(filter)}" placeholder="Buscar carta, tipo ou raridade">
+                 <select class="binder-filter">
+                   <option value="all" ${currentBinderFilterMode === "all" ? "selected" : ""}>Todas</option>
+                   <option value="not_in_deck" ${currentBinderFilterMode === "not_in_deck" ? "selected" : ""}>Fora do deck</option>
+                   <option value="spare" ${currentBinderFilterMode === "spare" ? "selected" : ""}>Com copias sobrando</option>
+                 </select>
+                 <div class="binder-pager">
+                   <span>${inventory.length ? pageStart + 1 : 0}-${Math.min(pageStart + pageSize, inventory.length)} de ${inventory.length} cartas</span>
                   <span>Pagina ${currentPage + 1}/${pageCount}</span>
                   <div class="pager-buttons">
                     <button class="pager-button" data-page-delta="-1" ${currentPage <= 0 ? "disabled" : ""}>‹</button>
                     <button class="pager-button" data-page-delta="1" ${currentPage >= pageCount - 1 ? "disabled" : ""}>›</button>
                   </div>
                 </div>
-                <div class="remove-bin" data-remove-bin="true">Arraste uma carta do deck aqui para remover</div>
-              </div>
-              <div class="binder-grid">${pageInventory.map(binderCardHtml).join("")}</div>
-            </aside>
-          </div>
+               </div>
+               <div class="binder-grid">${pageInventory.map(binderCardHtml).join("")}</div>
+             </aside>
+           </div>
         `;
         wireEvents();
         const search = document.querySelector(".binder-search");
@@ -1453,15 +1700,41 @@ def render_deck_editor_component(player_id: int, deck_data: dict, inventory_card
           currentPage = 0;
           render(event.target.value);
         });
+        document.querySelector(".binder-filter").addEventListener("change", (event) => {
+          currentBinderFilterMode = event.target.value;
+          currentPage = 0;
+          render(currentFilter);
+        });
       }
 
       function wireEvents() {
+        function positionPreview(preview, item) {
+          const rect = item.getBoundingClientRect();
+          const previewWidth = preview.offsetWidth || 280;
+          const previewHeight = preview.offsetHeight || Math.floor(previewWidth * 1.46);
+          const gutter = 12;
+          const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+          const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+          let left = rect.right + gutter;
+          if (left + previewWidth > viewportWidth - 8) {
+            left = rect.left - previewWidth - gutter;
+          }
+          if (left < 8) {
+            left = Math.max(8, Math.min(viewportWidth - previewWidth - 8, rect.left + gutter));
+          }
+          let top = rect.top + (rect.height / 2) - (previewHeight / 2);
+          top = Math.max(8, Math.min(top, viewportHeight - previewHeight - 8));
+          preview.style.left = `${left}px`;
+          preview.style.top = `${top}px`;
+        }
+
         document.querySelectorAll("[draggable='true']").forEach((item) => {
           item.addEventListener("dragstart", (event) => {
             const payload = {
               kind: item.dataset.kind,
               cardId: item.dataset.cardId,
-              deckId: item.dataset.deckId
+              deckId: item.dataset.deckId,
+              zone: item.dataset.zone
             };
             event.dataTransfer.setData("application/json", JSON.stringify(payload));
           });
@@ -1471,8 +1744,13 @@ def render_deck_editor_component(player_id: int, deck_data: dict, inventory_card
             if (!image || !preview) return;
             preview.querySelector("img").src = image.src;
             preview.querySelector("img").alt = image.alt;
-            preview.querySelector(".hover-preview-title").textContent = image.alt;
             preview.style.display = "block";
+            positionPreview(preview, item);
+          });
+          item.addEventListener("mousemove", () => {
+            const preview = document.querySelector(".hover-preview");
+            if (!preview || preview.style.display !== "block") return;
+            positionPreview(preview, item);
           });
           item.addEventListener("mouseleave", () => {
             const preview = document.querySelector(".hover-preview");
@@ -1498,13 +1776,47 @@ def render_deck_editor_component(player_id: int, deck_data: dict, inventory_card
           }
         });
 
-        const binderGrid = document.querySelector(".binder-grid");
-        binderGrid.addEventListener("wheel", (event) => {
+        const binderPanel = document.querySelector(".binder-panel");
+        binderPanel.addEventListener("wheel", (event) => {
           event.preventDefault();
           const direction = event.deltaY > 0 ? 1 : -1;
-          currentPage += direction;
-          render(currentFilter);
+          const nextPage = Math.min(Math.max(currentPage + direction, 0), Number.MAX_SAFE_INTEGER);
+          if (nextPage !== currentPage) {
+            currentPage = nextPage;
+            render(currentFilter);
+          }
         }, { passive: false });
+
+        async function moveDeckCardBetweenZones(payload, targetZone) {
+          if (!payload.deckId || !payload.zone || payload.zone === targetZone) return false;
+          const removedDeck = await removeDeckCard(payload.deckId);
+          data.deck = normalizeDeck(removedDeck);
+          changeAvailable(payload.cardId, 1);
+          try {
+            const addedDeck = await addCard(payload.cardId, targetZone);
+            data.deck = normalizeDeck(addedDeck);
+            changeAvailable(payload.cardId, -1);
+            markEditorDirty();
+            render(currentFilter);
+            return true;
+          } catch (err) {
+            try {
+              const restoredDeck = await addCard(payload.cardId, payload.zone);
+              data.deck = normalizeDeck(restoredDeck);
+              changeAvailable(payload.cardId, -1);
+            } catch (restoreErr) {}
+            throw err;
+          }
+        }
+
+        async function removeDeckCardToBinder(payload) {
+          if (payload.kind !== "deck") return;
+          const deckResponse = await removeDeckCard(payload.deckId);
+          data.deck = normalizeDeck(deckResponse);
+          changeAvailable(payload.cardId, 1);
+          markEditorDirty();
+          render(currentFilter);
+        }
 
         document.querySelectorAll(".zone-cards").forEach((zone) => {
           zone.addEventListener("dragover", (event) => {
@@ -1516,37 +1828,44 @@ def render_deck_editor_component(player_id: int, deck_data: dict, inventory_card
             event.preventDefault();
             zone.classList.remove("drop-active");
             const payload = JSON.parse(event.dataTransfer.getData("application/json") || "{}");
-            if (payload.kind !== "inventory") return;
             try {
-              const deckResponse = await addCard(payload.cardId, zone.dataset.zone);
-              data.deck = normalizeDeck(deckResponse);
-              changeAvailable(payload.cardId, -1);
-              render(currentFilter);
+              if (payload.kind === "inventory") {
+                const deckResponse = await addCard(payload.cardId, zone.dataset.zone);
+                data.deck = normalizeDeck(deckResponse);
+                changeAvailable(payload.cardId, -1);
+                markEditorDirty();
+                render(currentFilter);
+              } else if (payload.kind === "deck") {
+                await moveDeckCardBetweenZones(payload, zone.dataset.zone);
+              }
             } catch (err) {
               showError(err.message);
             }
           });
         });
 
-        const bin = document.querySelector("[data-remove-bin='true']");
-        bin.addEventListener("dragover", (event) => {
-          event.preventDefault();
-          bin.classList.add("drop-active");
-        });
-        bin.addEventListener("dragleave", () => bin.classList.remove("drop-active"));
-        bin.addEventListener("drop", async (event) => {
-          event.preventDefault();
-          bin.classList.remove("drop-active");
+        ["dragover", "dragleave", "drop"].forEach((eventName) => {
+          binderPanel.addEventListener(eventName, async (event) => {
+            if (eventName === "dragover") {
+              event.preventDefault();
+              binderPanel.classList.add("drop-active");
+              return;
+            }
+            if (eventName === "dragleave") {
+              if (!binderPanel.contains(event.relatedTarget)) {
+                binderPanel.classList.remove("drop-active");
+              }
+              return;
+            }
+            event.preventDefault();
+            binderPanel.classList.remove("drop-active");
             const payload = JSON.parse(event.dataTransfer.getData("application/json") || "{}");
-            if (payload.kind !== "deck") return;
             try {
-              const deckResponse = await removeDeckCard(payload.deckId);
-              data.deck = normalizeDeck(deckResponse);
-              changeAvailable(payload.cardId, 1);
-              render(currentFilter);
+              await removeDeckCardToBinder(payload);
             } catch (err) {
               showError(err.message);
             }
+          });
         });
       }
 
@@ -1615,9 +1934,18 @@ def render_collection_component(player_id: int, inventory_cards: list[dict]) -> 
         align-items: center;
         display: grid;
         gap: 10px;
-        grid-template-columns: minmax(260px, 420px) auto auto;
+        grid-template-columns: minmax(260px, 420px) minmax(180px, 220px) auto auto;
       }
       .collection-search {
+        background: #020617;
+        border: 1px solid rgba(148, 163, 184, 0.72);
+        border-radius: 6px;
+        color: #e5e7eb;
+        height: 36px;
+        padding: 0 11px;
+        width: 100%;
+      }
+      .collection-filter {
         background: #020617;
         border: 1px solid rgba(148, 163, 184, 0.72);
         border-radius: 6px;
@@ -1652,22 +1980,44 @@ def render_collection_component(player_id: int, inventory_cards: list[dict]) -> 
       .collection-grid {
         align-content: start;
         display: grid;
-        gap: 13px;
-        grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+        gap: 12px;
+        grid-template-columns: repeat(auto-fit, minmax(102px, 1fr));
+        justify-items: center;
         min-height: 680px;
       }
       .collection-card {
         background: rgba(15, 23, 42, 0.7);
-        border: 1px solid rgba(148, 163, 184, 0.28);
+        border: 0;
         border-radius: 7px;
         cursor: pointer;
         min-width: 0;
-        padding: 7px;
+        max-width: 124px;
+        padding: 4px;
         position: relative;
+        width: 100%;
       }
       .collection-card:hover {
-        border-color: rgba(56, 189, 248, 0.9);
         box-shadow: 0 10px 30px rgba(0,0,0,0.28);
+      }
+      .collection-hover-preview {
+        background: rgba(2, 6, 23, 0.92);
+        border: 1px solid rgba(147, 197, 253, 0.8);
+        border-radius: 8px;
+        box-shadow: 0 18px 42px rgba(0,0,0,0.45);
+        display: none;
+        max-height: calc(100vh - 24px);
+        padding: 6px;
+        pointer-events: none;
+        position: fixed;
+        width: min(340px, 26vw);
+        z-index: 9999;
+      }
+      .collection-hover-preview img {
+        border-radius: 4px;
+        display: block;
+        max-height: calc(100vh - 36px);
+        object-fit: contain;
+        width: 100%;
       }
       .collection-img {
         aspect-ratio: 421 / 614;
@@ -1675,20 +2025,6 @@ def render_collection_component(player_id: int, inventory_cards: list[dict]) -> 
         display: block;
         object-fit: cover;
         width: 100%;
-      }
-      .collection-card-name {
-        color: #f8fafc;
-        font-size: 12px;
-        font-weight: 750;
-        line-height: 1.15;
-        margin-top: 7px;
-        min-height: 28px;
-      }
-      .collection-card-meta {
-        color: #93c5fd;
-        font-size: 11px;
-        line-height: 1.2;
-        margin-top: 4px;
       }
       .collection-badge {
         background: rgba(2, 6, 23, 0.88);
@@ -1701,6 +2037,34 @@ def render_collection_component(player_id: int, inventory_cards: list[dict]) -> 
         position: absolute;
         right: 10px;
         top: 10px;
+      }
+      @media (max-width: 1180px) {
+        .collection-controls {
+          grid-template-columns: minmax(220px, 1fr) minmax(150px, 190px) auto auto;
+        }
+        .collection-grid {
+          grid-template-columns: repeat(auto-fit, minmax(98px, 1fr));
+        }
+      }
+      @media (max-width: 860px) {
+        .collection-head {
+          grid-template-columns: 1fr;
+        }
+        .collection-controls {
+          grid-template-columns: 1fr 180px auto auto;
+        }
+        .collection-grid {
+          grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+        }
+      }
+      @media (max-width: 640px) {
+        .collection-controls {
+          grid-template-columns: 1fr 1fr;
+        }
+        .collection-page {
+          min-width: 0;
+          text-align: left;
+        }
       }
       .rarity-common { color: #cbd5e1; }
       .rarity-rare { color: #7dd3fc; }
@@ -1780,9 +2144,11 @@ def render_collection_component(player_id: int, inventory_cards: list[dict]) -> 
     <script>
       let data = __PAYLOAD__;
       let currentFilter = "";
+      let currentCollectionFilterMode = "all";
       let currentPage = 0;
-      const pageSize = 30;
       const root = document.getElementById("collection-root");
+      const DIRTY_FLAG_KEY = "ygo_editor_dirty";
+      let lastRefreshAt = 0;
 
       function esc(value) {
         return String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -1799,9 +2165,79 @@ def render_collection_component(player_id: int, inventory_cards: list[dict]) -> 
         return "rarity-common";
       }
 
+      function normalizedImageUrl(imageUrl) {
+        if (!imageUrl) return "";
+        return imageUrl.startsWith("/") ? `${data.apiUrl}${imageUrl}` : imageUrl;
+      }
+
+      function sortCategory(cardType) {
+        const type = cardType || "";
+        if (type.includes("Spell")) return 1;
+        if (type.includes("Trap")) return 2;
+        if (["Fusion", "Synchro", "Xyz", "Link"].some((extraType) => type.includes(extraType))) return 3;
+        return 0;
+      }
+
+      function normalizeCollectionCard(card) {
+        return {
+          ...card,
+          type: card.type || "",
+          rarity: card.rarity || "Common",
+          archetype: card.archetype || "",
+          desc: card.desc || "",
+          race: card.race || "",
+          sort_category: card.sort_category ?? sortCategory(card.type),
+          image_url: normalizedImageUrl(card.image_url)
+        };
+      }
+
+      function isDirty() {
+        try {
+          return window.localStorage.getItem(DIRTY_FLAG_KEY) === "1";
+        } catch (err) {
+          return false;
+        }
+      }
+
+      async function refreshCollectionData() {
+        const now = Date.now();
+        if (now - lastRefreshAt < 1500) return;
+        lastRefreshAt = now;
+        const response = await fetch(`${data.apiUrl}/players/${data.playerId}/inventory`);
+        if (!response.ok) return;
+        data.inventory = (await response.json()).map(normalizeCollectionCard);
+        try { window.localStorage.removeItem(DIRTY_FLAG_KEY); } catch (err) {}
+        render();
+      }
+
+      function passesCollectionFilter(card) {
+        if (currentCollectionFilterMode === "not_in_deck") {
+          return Number(card.available_quantity || 0) === Number(card.quantity || 0);
+        }
+        if (currentCollectionFilterMode === "in_deck") {
+          return Number(card.available_quantity || 0) < Number(card.quantity || 0);
+        }
+        return true;
+      }
+
+      function collectionPageSize() {
+        const viewportWidth = Math.max(window.innerWidth || 0, document.documentElement?.clientWidth || 0, 960);
+        let minCardWidth = 96;
+        if (viewportWidth <= 860) {
+          minCardWidth = 88;
+        } else if (viewportWidth <= 1180) {
+          minCardWidth = 92;
+        }
+        const shellPadding = 80;
+        const usableWidth = Math.max(320, viewportWidth - shellPadding);
+        const columns = Math.max(1, Math.floor(usableWidth / (minCardWidth + 12)));
+        return Math.max(columns * 4, 24);
+      }
+
       function filteredInventory() {
         const needle = currentFilter.trim().toLowerCase();
         return data.inventory
+          .filter((card) => passesCollectionFilter(card))
           .filter((card) =>
             !needle || card.name.toLowerCase().includes(needle) ||
             card.type.toLowerCase().includes(needle) ||
@@ -1847,13 +2283,27 @@ def render_collection_component(player_id: int, inventory_cards: list[dict]) -> 
         try { window.localStorage.setItem("ygo_editor_dirty", "1"); } catch (err) {}
       }
 
+      function positionPreview(preview, item) {
+        const rect = item.getBoundingClientRect();
+        const previewWidth = preview.offsetWidth || 340;
+        const previewHeight = preview.offsetHeight || Math.floor(previewWidth * 1.46);
+        const gutter = 12;
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+        let left = rect.right + gutter;
+        if (left + previewWidth > viewportWidth - 8) left = rect.left - previewWidth - gutter;
+        if (left < 8) left = Math.max(8, Math.min(viewportWidth - previewWidth - 8, rect.left + gutter));
+        let top = rect.top + (rect.height / 2) - (previewHeight / 2);
+        top = Math.max(8, Math.min(top, viewportHeight - previewHeight - 8));
+        preview.style.left = `${left}px`;
+        preview.style.top = `${top}px`;
+      }
+
       function cardHtml(card) {
         return `
           <article class="collection-card" data-card-id="${card.card_id}">
             <img class="collection-img" src="${esc(card.image_url)}" alt="${esc(card.name)}">
             <div class="collection-badge">${card.available_quantity}/${card.quantity}</div>
-            <div class="collection-card-name">${esc(card.name)}</div>
-            <div class="collection-card-meta ${rarityClass(card.rarity)}">${esc(card.rarity)}<br>${esc(card.type)}</div>
           </article>
         `;
       }
@@ -1910,6 +2360,7 @@ def render_collection_component(player_id: int, inventory_cards: list[dict]) -> 
 
       function render() {
         const inventory = filteredInventory().filter((card) => Number(card.quantity) > 0);
+        const pageSize = collectionPageSize();
         const pageCount = Math.max(1, Math.ceil(inventory.length / pageSize));
         currentPage = Math.min(Math.max(currentPage, 0), pageCount - 1);
         const pageStart = currentPage * pageSize;
@@ -1918,6 +2369,7 @@ def render_collection_component(player_id: int, inventory_cards: list[dict]) -> 
         root.innerHTML = `
           <section class="collection-shell">
             <div class="collection-modal-backdrop"></div>
+            <div class="collection-hover-preview"><img alt=""></div>
             <div class="collection-toast"></div>
             <div class="collection-head">
               <div>
@@ -1926,6 +2378,11 @@ def render_collection_component(player_id: int, inventory_cards: list[dict]) -> 
               </div>
               <div class="collection-controls">
                 <input class="collection-search" value="${esc(currentFilter)}" placeholder="Buscar carta, tipo, raridade ou arquetipo">
+                <select class="collection-filter">
+                  <option value="all" ${currentCollectionFilterMode === "all" ? "selected" : ""}>Todas</option>
+                  <option value="not_in_deck" ${currentCollectionFilterMode === "not_in_deck" ? "selected" : ""}>Fora do deck</option>
+                  <option value="in_deck" ${currentCollectionFilterMode === "in_deck" ? "selected" : ""}>Em uso no deck</option>
+                </select>
                 <div class="collection-page">
                   ${inventory.length ? pageStart + 1 : 0}-${Math.min(pageStart + pageSize, inventory.length)} de ${inventory.length}<br>
                   Pagina ${currentPage + 1}/${pageCount}
@@ -1948,6 +2405,11 @@ def render_collection_component(player_id: int, inventory_cards: list[dict]) -> 
           currentPage = 0;
           render();
         });
+        document.querySelector(".collection-filter").addEventListener("change", (event) => {
+          currentCollectionFilterMode = event.target.value;
+          currentPage = 0;
+          render();
+        });
         document.querySelectorAll("[data-page-delta]").forEach((button) => {
           button.addEventListener("click", () => {
             currentPage += Number(button.dataset.pageDelta);
@@ -1961,6 +2423,24 @@ def render_collection_component(player_id: int, inventory_cards: list[dict]) -> 
           render();
         }, { passive: false });
         document.querySelectorAll(".collection-card").forEach((cardEl) => {
+          cardEl.addEventListener("mouseenter", () => {
+            const image = cardEl.querySelector(".collection-img");
+            const preview = document.querySelector(".collection-hover-preview");
+            if (!image || !preview) return;
+            preview.querySelector("img").src = image.src;
+            preview.querySelector("img").alt = image.alt;
+            preview.style.display = "block";
+            positionPreview(preview, cardEl);
+          });
+          cardEl.addEventListener("mousemove", () => {
+            const preview = document.querySelector(".collection-hover-preview");
+            if (!preview || preview.style.display !== "block") return;
+            positionPreview(preview, cardEl);
+          });
+          cardEl.addEventListener("mouseleave", () => {
+            const preview = document.querySelector(".collection-hover-preview");
+            if (preview) preview.style.display = "none";
+          });
           cardEl.addEventListener("click", () => {
             const card = data.inventory.find((item) => Number(item.card_id) === Number(cardEl.dataset.cardId));
             if (card) openModal(card);
@@ -1969,6 +2449,14 @@ def render_collection_component(player_id: int, inventory_cards: list[dict]) -> 
       }
 
       render();
+      if (isDirty()) {
+        refreshCollectionData().catch(() => {});
+      }
+      window.setInterval(() => {
+        if (isDirty()) {
+          refreshCollectionData().catch(() => {});
+        }
+      }, 900);
     </script>
     """.replace("__PAYLOAD__", json.dumps(payload))
     components.html(html, height=880, scrolling=False)
@@ -2007,30 +2495,21 @@ def render_shop_component(player_id: int, player_gold: float, shop: dict) -> Non
         border-radius: 8px;
         box-shadow: 0 18px 42px rgba(0,0,0,0.45);
         display: none;
-        left: 50%;
-        max-height: calc(100vh - 28px);
-        padding: 8px;
+        max-height: calc(100vh - 24px);
+        padding: 6px;
         pointer-events: none;
         position: fixed;
-        top: 14px;
-        transform: translateX(-50%);
-        width: min(520px, 38vw);
+        width: min(340px, 26vw);
         z-index: 9999;
       }
       .shop-hover-preview img {
-        border-radius: 5px;
+        border-radius: 4px;
         display: block;
-        max-height: calc(100vh - 72px);
+        max-height: calc(100vh - 36px);
         object-fit: contain;
         width: 100%;
       }
-      .shop-hover-preview-title {
-        color: #e5e7eb;
-        font-size: 12px;
-        font-weight: 700;
-        line-height: 1.2;
-        margin-top: 6px;
-      }
+      .shop-hover-preview-title { display:none; }
       .buy-button { width:100%; height:22px; margin-top:4px; border:0; border-radius:4px; background:#b45309; color:white; font-size:10px; font-weight:850; cursor:pointer; padding:0 4px; }
       .buy-button:disabled { opacity:.45; cursor:not-allowed; }
       .buy-button.recent-buy { animation:buyPulse .7s ease; background:#059669; }
@@ -2052,6 +2531,21 @@ def render_shop_component(player_id: int, player_gold: float, shop: dict) -> Non
       let recentBoughtCardId = null;
       function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
       function fmtGold(v){v=Number(v||0); return Number.isInteger(v) ? String(v) : v.toFixed(1);}
+      function positionPreview(preview, item){
+        const rect = item.getBoundingClientRect();
+        const previewWidth = preview.offsetWidth || 340;
+        const previewHeight = preview.offsetHeight || Math.floor(previewWidth * 1.46);
+        const gutter = 12;
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+        let left = rect.right + gutter;
+        if (left + previewWidth > viewportWidth - 8) left = rect.left - previewWidth - gutter;
+        if (left < 8) left = Math.max(8, Math.min(viewportWidth - previewWidth - 8, rect.left + gutter));
+        let top = rect.top + (rect.height / 2) - (previewHeight / 2);
+        top = Math.max(8, Math.min(top, viewportHeight - previewHeight - 8));
+        preview.style.left = `${left}px`;
+        preview.style.top = `${top}px`;
+      }
       function typeSort(card){
         const t = card.type || "";
         if (t.includes("Spell")) return 1;
@@ -2099,8 +2593,13 @@ def render_shop_component(player_id: int, player_gold: float, shop: dict) -> Non
             if(!image || !preview) return;
             preview.querySelector("img").src = image.src;
             preview.querySelector("img").alt = image.alt;
-            preview.querySelector(".shop-hover-preview-title").textContent = image.alt;
             preview.style.display = "block";
+            positionPreview(preview, cardEl);
+          });
+          cardEl.addEventListener("mousemove", ()=>{
+            const preview = document.querySelector(".shop-hover-preview");
+            if(!preview || preview.style.display !== "block") return;
+            positionPreview(preview, cardEl);
           });
           cardEl.addEventListener("mouseleave", ()=>{
             const preview = document.querySelector(".shop-hover-preview");
