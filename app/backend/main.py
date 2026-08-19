@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 from app.core.config import STATIC_DIR, ensure_local_dirs
 from app.db import get_session, init_db
 from app.models import Card, CollectionProgress, InventoryItem, Player
-from app.schemas import BossPickRequest, CardRestrictionRead, CardSearchRead, CollectionRead, DeckMutation, DeckRead, InventoryCardRead, PlayerCreate, PlayerRead, RestrictCardRequest, RoundAdvanceRead, ShopBuyRequest, ShopRead, YearPickClaimRequest, YearPickRead
-from app.services.deck import add_card_to_deck, build_deck_response, deck_counts_by_card, export_deck_as_ydke, remove_card_from_deck
+from app.schemas import BossPickRequest, CardRestrictionRead, CardSearchRead, CollectionRead, DeckListRead, DeckMutation, DeckRead, InventoryCardRead, PlayerCreate, PlayerRead, RestrictCardRequest, RoundAdvanceRead, SavedDeckCreate, SavedDeckRead, SavedDeckRename, ShopBuyRequest, ShopRead, YearPickClaimRequest, YearPickRead
+from app.services.deck import add_card_to_deck, build_deck_response, create_saved_deck, deck_counts_by_card, export_deck_as_ydke, list_saved_decks, remove_card_from_deck, rename_saved_deck, set_active_deck
 from app.services.game import advance_round, claim_boss_pick, create_player, delete_player, import_ydk_to_inventory, sell_inventory_card
 from app.services.pricing import sell_price_for_rarity
 from app.services.restrictions import clear_card_restriction, list_restrictions, restriction_status_map, search_cards_by_name, set_card_limited_or_banned
@@ -168,6 +168,45 @@ def clear_restriction(player_id: int, card_id: int, session: Session = Depends(g
 def get_deck(player_id: int, session: Session = Depends(get_session)) -> dict:
     if not session.get(Player, player_id):
         raise HTTPException(status_code=404, detail="Jogador nao encontrado.")
+    return build_deck_response(session, player_id)
+
+
+@app.get("/players/{player_id}/decks", response_model=DeckListRead)
+def get_saved_decks(player_id: int, session: Session = Depends(get_session)) -> DeckListRead:
+    try:
+        player, decks = list_saved_decks(session, player_id)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return DeckListRead(
+        active_deck_id=player.active_deck_id,
+        decks=[SavedDeckRead.model_validate(deck) for deck in decks],
+    )
+
+
+@app.post("/players/{player_id}/decks", response_model=SavedDeckRead)
+def create_saved_deck_route(player_id: int, payload: SavedDeckCreate, session: Session = Depends(get_session)) -> SavedDeckRead:
+    try:
+        deck = create_saved_deck(session, player_id, payload.name, payload.copy_active_deck)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return SavedDeckRead.model_validate(deck)
+
+
+@app.patch("/players/{player_id}/decks/{saved_deck_id}", response_model=SavedDeckRead)
+def rename_saved_deck_route(player_id: int, saved_deck_id: int, payload: SavedDeckRename, session: Session = Depends(get_session)) -> SavedDeckRead:
+    try:
+        deck = rename_saved_deck(session, player_id, saved_deck_id, payload.name)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return SavedDeckRead.model_validate(deck)
+
+
+@app.post("/players/{player_id}/decks/{saved_deck_id}/activate", response_model=DeckRead)
+def activate_saved_deck_route(player_id: int, saved_deck_id: int, session: Session = Depends(get_session)) -> DeckRead:
+    try:
+        set_active_deck(session, player_id, saved_deck_id)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return build_deck_response(session, player_id)
 
 

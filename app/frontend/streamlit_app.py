@@ -27,6 +27,12 @@ def api_delete(path: str):
     return response.json()
 
 
+def api_patch(path: str, **kwargs):
+    response = requests.patch(f"{API_URL}{path}", timeout=60, **kwargs)
+    response.raise_for_status()
+    return response.json()
+
+
 def error_message(exc: requests.HTTPError) -> str:
     try:
         payload = exc.response.json()
@@ -423,6 +429,7 @@ if not active_player:
     st.stop()
 
 player = api_get(f"/players/{active_player['id']}")
+saved_decks = api_get(f"/players/{player['id']}/decks")
 collections = api_get("/collections")
 current_collection = next(
     (item for item in collections if item["position"] == player["current_collection_index"]),
@@ -2700,6 +2707,63 @@ editor_tab, collection_tab, shop_tab, year_pick_tab, banlist_tab = st.tabs(
 )
 
 with editor_tab:
+    deck_options = saved_decks.get("decks", [])
+    active_deck_id = saved_decks.get("active_deck_id")
+    active_deck = next((item for item in deck_options if item["id"] == active_deck_id), None)
+    active_deck_name = deck.get("active_deck_name") or (active_deck["name"] if active_deck else "Deck Principal")
+
+    manager_cols = st.columns([3.4, 2.2, 2.4], vertical_alignment="bottom")
+    deck_ids = [item["id"] for item in deck_options]
+    deck_labels = {item["id"]: item["name"] for item in deck_options}
+    if active_deck_id in deck_ids:
+        selected_index = deck_ids.index(active_deck_id)
+    else:
+        selected_index = 0
+
+    selected_deck_id = manager_cols[0].selectbox(
+        "Deck ativo",
+        deck_ids,
+        index=selected_index,
+        format_func=lambda deck_id: deck_labels.get(deck_id, f"Deck {deck_id}"),
+        key=f"active-deck-select-{player['id']}",
+    )
+    if selected_deck_id != active_deck_id:
+        try:
+            api_post(f"/players/{player['id']}/decks/{selected_deck_id}/activate")
+            st.rerun()
+        except requests.HTTPError as exc:
+            st.error(error_message(exc))
+
+    with manager_cols[1].form(f"rename-deck-{player['id']}"):
+        renamed_deck = st.text_input("Renomear deck ativo", value=active_deck_name)
+        rename_submitted = st.form_submit_button("Salvar nome")
+        if rename_submitted:
+            try:
+                api_patch(
+                    f"/players/{player['id']}/decks/{active_deck_id}",
+                    json={"name": renamed_deck},
+                )
+                st.success("Nome do deck atualizado.")
+                st.rerun()
+            except requests.HTTPError as exc:
+                st.error(error_message(exc))
+
+    with manager_cols[2].form(f"create-deck-{player['id']}"):
+        new_deck_name = st.text_input("Novo deck", placeholder="Ex.: Chaos Control")
+        copy_active_deck = st.checkbox("Duplicar deck atual", value=False)
+        create_submitted = st.form_submit_button("Criar e abrir")
+        if create_submitted:
+            try:
+                api_post(
+                    f"/players/{player['id']}/decks",
+                    json={"name": new_deck_name, "copy_active_deck": copy_active_deck},
+                )
+                st.success("Novo deck criado.")
+                st.rerun()
+            except requests.HTTPError as exc:
+                st.error(error_message(exc))
+
+    st.caption(f"Editando agora: {active_deck_name}")
     if not inventory:
         st.info("Inventario vazio. Importe um .ydk para popular o binder inicial.")
     render_deck_editor_component(player["id"], deck, inventory)

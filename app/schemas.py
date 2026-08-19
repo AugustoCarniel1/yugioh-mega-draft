@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class PlayerCreate(BaseModel):
@@ -14,6 +14,19 @@ class PlayerRead(BaseModel):
     current_collection_index: int
     boss_pick_pending: bool = False
     pending_year_pick_year: int | None = None
+    active_deck_id: int | None = None
+
+    @field_validator("pending_year_pick_year", mode="before")
+    @classmethod
+    def normalize_pending_year_pick_year(cls, value):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            cleaned = value.strip().lower()
+            if cleaned in {"", "null", "none"}:
+                return None
+            return int(cleaned)
+        return int(value)
 
 
 class InventoryCardRead(BaseModel):
@@ -36,6 +49,28 @@ class InventoryCardRead(BaseModel):
 class DeckMutation(BaseModel):
     card_id: int
     zone: str
+
+
+class SavedDeckCreate(BaseModel):
+    name: str
+    copy_active_deck: bool = False
+
+
+class SavedDeckRename(BaseModel):
+    name: str
+
+
+class SavedDeckRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    player_id: int
+    name: str
+
+
+class DeckListRead(BaseModel):
+    active_deck_id: int | None = None
+    decks: list[SavedDeckRead]
 
 
 class DeckCardRead(BaseModel):
@@ -73,6 +108,8 @@ class RestrictCardRequest(BaseModel):
 
 
 class DeckRead(BaseModel):
+    active_deck_id: int | None = None
+    active_deck_name: str | None = None
     main: list[DeckCardRead]
     extra: list[DeckCardRead]
     side: list[DeckCardRead]

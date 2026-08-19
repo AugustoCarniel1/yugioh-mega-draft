@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.data.core_boosters import CORE_BOOSTERS
 from app.models import CardRestriction, CollectionProgress, DeckCard, InventoryItem, Player
-from app.services.deck import card_copies_in_deck, trim_card_from_deck
+from app.services.deck import card_copies_in_deck, get_or_create_active_deck, trim_card_from_deck
 from app.services.pricing import sell_price_for_rarity
 from app.services.ydk import parse_ydk
 from app.services.year_pick import collection_year, get_collection_by_position, round_gold_for_player
@@ -62,6 +62,7 @@ def claim_boss_pick(session: Session, player_id: int, card_id: int, start_year: 
     card = get_or_fetch_card(session, card_id)
     if "Monster" not in (card.type or ""):
         raise ValueError("Escolha apenas monstros para o boss inicial.")
+    active_deck = get_or_create_active_deck(session, player_id)
 
     item = session.execute(
         select(InventoryItem).where(
@@ -83,7 +84,7 @@ def claim_boss_pick(session: Session, player_id: int, card_id: int, start_year: 
     zone = "extra" if any(extra_type in (card.type or "") for extra_type in ("Fusion", "Synchro", "Xyz", "Link")) else "main"
     deck_card = session.execute(
         select(DeckCard).where(
-            DeckCard.player_id == player_id,
+            DeckCard.saved_deck_id == active_deck.id,
             DeckCard.card_id == card_id,
             DeckCard.zone == zone,
         )
@@ -91,7 +92,7 @@ def claim_boss_pick(session: Session, player_id: int, card_id: int, start_year: 
     if deck_card:
         deck_card.quantity += 1
     else:
-        deck_card = DeckCard(player_id=player_id, card_id=card_id, zone=zone, quantity=1)
+        deck_card = DeckCard(player_id=player_id, saved_deck_id=active_deck.id, card_id=card_id, zone=zone, quantity=1)
 
     player.boss_pick_pending = False
     player.current_collection_index = first_position - 1

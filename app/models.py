@@ -19,9 +19,16 @@ class Player(Base):
     boss_pick_pending: Mapped[bool] = mapped_column(Boolean, default=False)
     pending_year_pick_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     year_pick_claims: Mapped[dict] = mapped_column(JSON, default=dict)
+    active_deck_id: Mapped[Optional[int]] = mapped_column(ForeignKey("saveddeck.id"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     inventory_items: Mapped[list["InventoryItem"]] = relationship(back_populates="player", cascade="all, delete-orphan")
+    decks: Mapped[list["SavedDeck"]] = relationship(
+        back_populates="player",
+        cascade="all, delete-orphan",
+        foreign_keys="SavedDeck.player_id",
+    )
+    active_deck: Mapped[Optional["SavedDeck"]] = relationship(foreign_keys=[active_deck_id], post_update=True)
     deck_cards: Mapped[list["DeckCard"]] = relationship(back_populates="player", cascade="all, delete-orphan")
     card_restrictions: Mapped[list["CardRestriction"]] = relationship(back_populates="player", cascade="all, delete-orphan")
 
@@ -60,17 +67,32 @@ class InventoryItem(Base):
     card: Mapped[Card] = relationship(back_populates="inventory_items")
 
 
-class DeckCard(Base):
-    __tablename__ = "deckcard"
-    __table_args__ = (UniqueConstraint("player_id", "card_id", "zone", name="uq_deck_player_card_zone"),)
+class SavedDeck(Base):
+    __tablename__ = "saveddeck"
+    __table_args__ = (UniqueConstraint("player_id", "name", name="uq_saveddeck_player_name"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     player_id: Mapped[int] = mapped_column(ForeignKey("player.id"), index=True)
+    name: Mapped[str] = mapped_column(String, default="Deck Principal")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    player: Mapped[Player] = relationship(back_populates="decks", foreign_keys=[player_id])
+    deck_cards: Mapped[list["DeckCard"]] = relationship(back_populates="saved_deck", cascade="all, delete-orphan")
+
+
+class DeckCard(Base):
+    __tablename__ = "deckcard"
+    __table_args__ = (UniqueConstraint("saved_deck_id", "card_id", "zone", name="uq_deck_saveddeck_card_zone"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    player_id: Mapped[int] = mapped_column(ForeignKey("player.id"), index=True)
+    saved_deck_id: Mapped[Optional[int]] = mapped_column(ForeignKey("saveddeck.id"), index=True, nullable=True)
     card_id: Mapped[int] = mapped_column(ForeignKey("card.id"), index=True)
     zone: Mapped[str] = mapped_column(String, index=True)
     quantity: Mapped[int] = mapped_column(Integer, default=1)
 
     player: Mapped[Player] = relationship(back_populates="deck_cards")
+    saved_deck: Mapped[Optional[SavedDeck]] = relationship(back_populates="deck_cards")
     card: Mapped[Card] = relationship(back_populates="deck_cards")
 
 
