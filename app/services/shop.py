@@ -1,9 +1,9 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Card, CollectionProgress, InventoryItem, Player
+from app.models import Card, CardPrinting, CollectionProgress, InventoryItem, Player
 from app.services.pricing import buy_price_for_rarity
-from app.services.ygoprodeck import ensure_card_image, fetch_cardset_payload
+from app.services.ygoprodeck import ensure_card_image, ensure_collection_cards_synced
 
 
 RARITY_ORDER = {
@@ -13,26 +13,6 @@ RARITY_ORDER = {
     "Ultra Rare": 3,
     "Secret Rare": 4,
 }
-
-
-def _card_from_payload(payload: dict) -> Card:
-    return Card(
-        id=payload["id"],
-        name=payload["name"],
-        type=payload.get("type"),
-        desc=payload.get("desc"),
-        race=payload.get("race"),
-        archetype=payload.get("archetype"),
-        card_images=payload.get("card_images", []),
-        card_sets=payload.get("card_sets", []),
-    )
-
-
-def _matching_set(card_payload: dict, collection_name: str) -> dict:
-    for card_set in card_payload.get("card_sets", []):
-        if card_set.get("set_name") == collection_name:
-            return card_set
-    return {}
 
 
 def get_shop_cards(session: Session, player_id: int) -> dict:
@@ -48,18 +28,24 @@ def get_shop_cards(session: Session, player_id: int) -> dict:
     if not collection:
         return {"collection_name": None, "collection_position": None, "cards": []}
 
-    payloads = fetch_cardset_payload(collection.set_name)
-    cards = []
-    for payload in payloads:
-        card = session.get(Card, payload["id"])
-        if not card:
-            card = _card_from_payload(payload)
-            session.add(card)
-            session.commit()
-            session.refresh(card)
+    sync_result = ensure_collection_cards_synced(session, collection)
+    if sync_result["error"]:
+        raise ValueError(f"Nao foi possivel sincronizar {collection.set_name}: {sync_result['error']}")
 
-        set_info = _matching_set(payload, collection.set_name)
-        rarity = set_info.get("set_rarity") or "Common"
+    rows = session.execute(
+        select(CardPrinting, Card)
+        .join(Card, CardPrinting.card_id == Card.id)
+        .where(CardPrinting.collection_id == collection.id)
+        .order_by(Card.name, CardPrinting.set_code)
+    ).all()
+    cards = []
+    seen_cards: set[int] = set()
+    for printing, card in rows:
+        # Alternate print codes still represent one purchasable card in this collection.
+        if card.id in seen_cards:
+            continue
+        seen_cards.add(card.id)
+        rarity = printing.set_rarity or "Common"
         cards.append(
             {
                 "card_id": card.id,
@@ -70,7 +56,7 @@ def get_shop_cards(session: Session, player_id: int) -> dict:
                 "archetype": card.archetype,
                 "rarity": rarity,
                 "price": buy_price_for_rarity(rarity),
-                "set_code": set_info.get("set_code"),
+                "set_code": printing.set_code or None,
                 "image_url": ensure_card_image(card, session),
             }
         )

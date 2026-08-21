@@ -39,9 +39,16 @@ class Card(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String, index=True)
     type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    frame_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     desc: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     race: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     archetype: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    attribute: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    atk: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    defense: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    level: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    linkval: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    scale: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     card_images: Mapped[list[dict]] = mapped_column(JSON, default=list)
     card_sets: Mapped[list[dict]] = mapped_column(JSON, default=list)
     cached_image_path: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -50,6 +57,7 @@ class Card(Base):
     inventory_items: Mapped[list["InventoryItem"]] = relationship(back_populates="card")
     deck_cards: Mapped[list["DeckCard"]] = relationship(back_populates="card")
     card_restrictions: Mapped[list["CardRestriction"]] = relationship(back_populates="card")
+    printings: Mapped[list["CardPrinting"]] = relationship(back_populates="card", cascade="all, delete-orphan")
 
 
 class InventoryItem(Base):
@@ -119,3 +127,28 @@ class CollectionProgress(Base):
     tcg_date: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
     card_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     position: Mapped[int] = mapped_column(Integer, index=True)
+    cards_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    cards_sync_error: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+    card_printings: Mapped[list["CardPrinting"]] = relationship(back_populates="collection", cascade="all, delete-orphan")
+
+
+class CardPrinting(Base):
+    __tablename__ = "cardprinting"
+    __table_args__ = (
+        UniqueConstraint(
+            "card_id", "collection_id", "set_code", "set_rarity", "set_rarity_code",
+            name="uq_card_printing_identity",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    card_id: Mapped[int] = mapped_column(ForeignKey("card.id"), index=True)
+    collection_id: Mapped[int] = mapped_column(ForeignKey("collectionprogress.id"), index=True)
+    set_code: Mapped[str] = mapped_column(String, default="")
+    set_rarity: Mapped[str] = mapped_column(String, default="Common", index=True)
+    set_rarity_code: Mapped[str] = mapped_column(String, default="")
+    set_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    card: Mapped[Card] = relationship(back_populates="printings")
+    collection: Mapped[CollectionProgress] = relationship(back_populates="card_printings")

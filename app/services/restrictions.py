@@ -1,8 +1,8 @@
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import Card, CardRestriction, DeckCard, Player
-from app.services.ygoprodeck import ensure_card_image, get_or_fetch_card
+from app.services.ygoprodeck import ensure_card_image, get_or_fetch_card, save_card_payload
 
 
 LIMITED = "limited"
@@ -15,7 +15,8 @@ def search_cards_by_name(session: Session, query: str, limit: int = 20, monster_
     if not query:
         return []
 
-    statement = select(Card).where(Card.name.ilike(f"%{query}%"))
+    searchable_fields = (Card.name, Card.desc, Card.type, Card.race, Card.archetype, Card.attribute)
+    statement = select(Card).where(or_(*(field.ilike(f"%{query}%") for field in searchable_fields)))
     if monster_only:
         statement = statement.where(Card.type.ilike("%Monster%"))
     cards_by_id = {card.id: card for card in session.execute(statement.order_by(Card.name).limit(limit)).scalars()}
@@ -29,9 +30,11 @@ def search_cards_by_name(session: Session, query: str, limit: int = 20, monster_
         if monster_only and "Monster" not in (payload.get("type") or ""):
             continue
         if payload["id"] not in cards_by_id:
-            cards_by_id[payload["id"]] = get_or_fetch_card(session, payload["id"])
+            cards_by_id[payload["id"]] = save_card_payload(session, payload)
         if len(cards_by_id) >= limit:
             break
+
+    session.commit()
 
     return sorted(cards_by_id.values(), key=lambda card: card.name)[:limit]
 
@@ -39,8 +42,9 @@ def search_cards_by_name(session: Session, query: str, limit: int = 20, monster_
 def local_cards_by_name(session: Session, query: str, limit: int = 20) -> list[Card]:
     return list(
         session.execute(
-            select(Card)
-            .where(Card.name.ilike(f"%{query}%"))
+            select(Card).where(
+                or_(*(field.ilike(f"%{query}%") for field in (Card.name, Card.desc, Card.type, Card.race, Card.archetype, Card.attribute)))
+            )
             .order_by(Card.name)
             .limit(limit)
         ).scalars()

@@ -111,10 +111,38 @@ def _run_saved_deck_migrations() -> None:
             connection.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_deckcard_zone ON deckcard (zone)")
 
 
+def _run_card_catalog_migrations() -> None:
+    with engine.begin() as connection:
+        card_columns = {
+            column[1] for column in connection.exec_driver_sql("PRAGMA table_info(card)").fetchall()
+        }
+        for column_name, column_type in {
+            "frame_type": "VARCHAR",
+            "attribute": "VARCHAR",
+            "atk": "INTEGER",
+            "defense": "INTEGER",
+            "level": "INTEGER",
+            "linkval": "INTEGER",
+            "scale": "INTEGER",
+        }.items():
+            if column_name not in card_columns:
+                connection.exec_driver_sql(f"ALTER TABLE card ADD COLUMN {column_name} {column_type}")
+
+        collection_columns = {
+            column[1]
+            for column in connection.exec_driver_sql("PRAGMA table_info(collectionprogress)").fetchall()
+        }
+        if "cards_synced_at" not in collection_columns:
+            connection.exec_driver_sql("ALTER TABLE collectionprogress ADD COLUMN cards_synced_at DATETIME")
+        if "cards_sync_error" not in collection_columns:
+            connection.exec_driver_sql("ALTER TABLE collectionprogress ADD COLUMN cards_sync_error VARCHAR")
+
+
 def init_db() -> None:
     Base.metadata.create_all(engine)
     _run_player_migrations()
     _run_saved_deck_migrations()
+    _run_card_catalog_migrations()
 
 
 def get_session() -> Generator[Session, None, None]:

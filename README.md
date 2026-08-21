@@ -19,6 +19,18 @@ Jeito mais facil no Windows:
 
 Isso cria a `.venv` se precisar, instala as dependencias, inicializa o banco e abre backend + frontend em janelas separadas.
 
+## Base local de cartas
+
+Depois de atualizar o projeto, execute uma vez no Windows:
+
+```powershell
+.\sincronizar_cartas.bat
+```
+
+O processo importa todas as colecoes configuradas, as cartas e cada impressao/raridade para o banco local.
+Ele pode demorar alguns minutos na primeira vez e e seguro executa-lo novamente: colecoes concluidas sao ignoradas e eventuais falhas sao retomadas.
+As imagens continuam sendo baixadas somente quando uma carta aparece na interface.
+
 Manual:
 
 ```powershell

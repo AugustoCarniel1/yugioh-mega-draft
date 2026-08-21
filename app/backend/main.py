@@ -15,7 +15,7 @@ from app.services.restrictions import clear_card_restriction, list_restrictions,
 from app.services.shop import buy_shop_card, get_shop_cards
 from app.services.ydk import export_ydke
 from app.services.year_pick import pending_year_pick, claim_year_pick_card
-from app.services.ygoprodeck import ensure_card_image, sync_collections
+from app.services.ygoprodeck import catalog_sync_status, ensure_card_image, sync_card_catalog, sync_collections
 
 
 ensure_local_dirs()
@@ -298,6 +298,19 @@ def sync_collections_route(session: Session = Depends(get_session)) -> dict:
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"synced": count}
+
+
+@app.get("/catalog/sync-status")
+def get_catalog_sync_status(session: Session = Depends(get_session)) -> dict:
+    return catalog_sync_status(session)
+
+
+@app.post("/catalog/sync")
+def sync_card_catalog_route(retry_failed: bool = False, session: Session = Depends(get_session)) -> dict:
+    try:
+        return sync_card_catalog(session, retry_failed=retry_failed)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/collections", response_model=list[CollectionRead])
