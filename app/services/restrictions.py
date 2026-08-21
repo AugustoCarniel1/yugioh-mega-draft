@@ -126,12 +126,12 @@ def clear_card_restriction(session: Session, player_id: int, card_id: int) -> No
         session.commit()
 
 
-def three_copy_exception_count(session: Session, player_id: int) -> int:
+def three_copy_exception_count(session: Session, player_id: int, saved_deck_id: int | None = None) -> int:
+    statement = select(DeckCard.card_id).where(DeckCard.player_id == player_id)
+    if saved_deck_id is not None:
+        statement = statement.where(DeckCard.saved_deck_id == saved_deck_id)
     rows = session.execute(
-        select(DeckCard.card_id)
-        .where(DeckCard.player_id == player_id)
-        .group_by(DeckCard.card_id)
-        .having(func.sum(DeckCard.quantity) >= 3)
+        statement.group_by(DeckCard.card_id).having(func.sum(DeckCard.quantity) >= 3)
     ).all()
     return len(rows)
 
@@ -145,7 +145,13 @@ def allowed_copies_for_card(session: Session, player_id: int, card_id: int) -> i
     return 3
 
 
-def can_add_copy(session: Session, player_id: int, card_id: int, current_copies: int) -> tuple[bool, str]:
+def can_add_copy(
+    session: Session,
+    player_id: int,
+    card_id: int,
+    current_copies: int,
+    saved_deck_id: int | None = None,
+) -> tuple[bool, str]:
     status = restriction_status_map(session, player_id).get(card_id)
     if status == BANNED:
         return False, "Carta banida."
@@ -154,11 +160,11 @@ def can_add_copy(session: Session, player_id: int, card_id: int, current_copies:
     if current_copies >= 3:
         return False, "Maximo de 3 copias."
     if current_copies >= 2:
+        statement = select(DeckCard.card_id).where(DeckCard.player_id == player_id)
+        if saved_deck_id is not None:
+            statement = statement.where(DeckCard.saved_deck_id == saved_deck_id)
         exception_cards = session.execute(
-            select(DeckCard.card_id)
-            .where(DeckCard.player_id == player_id)
-            .group_by(DeckCard.card_id)
-            .having(func.sum(DeckCard.quantity) >= 3)
+            statement.group_by(DeckCard.card_id).having(func.sum(DeckCard.quantity) >= 3)
         ).scalars().all()
         if card_id not in exception_cards and len(exception_cards) >= MAX_THREE_COPY_EXCEPTIONS:
             return False, "Apenas 2 cartas podem ter 3 copias no deck."

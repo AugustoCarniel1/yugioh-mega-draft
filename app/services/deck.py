@@ -211,7 +211,7 @@ def add_card_to_deck(session: Session, player_id: int, card_id: int, zone: str) 
     if card_copies_in_deck(session, player_id, card_id, saved_deck.id) >= inventory_quantity(session, player_id, card_id):
         raise ValueError("Todas as copias dessa carta ja estao em uso no deck atual.")
     current_copies = card_copies_in_deck(session, player_id, card_id, saved_deck.id)
-    allowed, reason = can_add_copy(session, player_id, card_id, current_copies)
+    allowed, reason = can_add_copy(session, player_id, card_id, current_copies, saved_deck.id)
     if not allowed:
         raise ValueError(reason)
     if zone == "extra" and not is_extra_deck_card(card.type):
